@@ -32,7 +32,7 @@
 
             args = {
               inherit src;
-              nativeBuildInputs = [ pkgs.go_1_21 ];
+              buildInputs = [ pkgs.go_1_21 ];
             };
           in pkgs.runCommandCC "go-lua-test" args ''
             cd "$src"
