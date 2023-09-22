@@ -1,0 +1,28 @@
+{
+	"Copyright": {
+		"prefix": "copyright",
+		"body": [
+			"$LINE_COMMENT Copyright $CURRENT_YEAR Ross Light",
+			"$LINE_COMMENT",
+			"$LINE_COMMENT Permission is hereby granted, free of charge, to any person obtaining a copy of",
+			"$LINE_COMMENT this software and associated documentation files (the “Software”), to deal in",
+			"$LINE_COMMENT the Software without restriction, including without limitation the rights to",
+			"$LINE_COMMENT use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of",
+			"$LINE_COMMENT the Software, and to permit persons to whom the Software is furnished to do so,",
+			"$LINE_COMMENT subject to the following conditions:",
+			"$LINE_COMMENT",
+			"$LINE_COMMENT The above copyright notice and this permission notice shall be included in all",
+			"$LINE_COMMENT copies or substantial portions of the Software.",
+			"$LINE_COMMENT",
+			"$LINE_COMMENT THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR",
+			"$LINE_COMMENT IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS",
+			"$LINE_COMMENT FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR",
+			"$LINE_COMMENT COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER",
+			"$LINE_COMMENT IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN",
+			"$LINE_COMMENT CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+			"$LINE_COMMENT",
+			"$LINE_COMMENT SPDX-License-Identifier: MIT"
+		],
+		"description": "MIT license header"
+	}
+}
