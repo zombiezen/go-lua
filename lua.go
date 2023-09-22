@@ -32,7 +32,6 @@ import (
 
 // #cgo unix CFLAGS: -DLUA_USE_POSIX
 // #cgo unix LDFLAGS: -lm
-// #cgo windows CFLAGS: -DLUA_USE_WINDOWS
 // #include <stdlib.h>
 // #include <stddef.h>
 // #include "lua.h"
