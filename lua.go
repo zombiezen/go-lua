@@ -772,13 +772,34 @@ func (f Function) pcall(l *State) (nResults int, err error) {
 	return f(l)
 }
 
-// PushFunction pushes a Go closure onto the stack.
-func (l *State) PushFunction(f Function) {
+// PushClosure pushes a Go closure onto the stack.
+// n is how many upvalues this function will have,
+// popped off the top of the stack.
+// (When there are multiple upvalues, the first value is pushed first.)
+// If n is negative or greater than 254, then PushClosure panics.
+//
+// Under the hood, PushClosure uses the first Lua upvalue
+// to store a reference to the Go function.
+// [UpvalueIndex] already compensates for this,
+// so the first upvalue you push with PushClosure
+// can be accessed with UpvalueIndex(1).
+// As such, this implementation detail is largely invisible
+// except in debug interfaces.
+// No assumptions should be made about the content of the first upvalue,
+// as it is subject to change,
+// but it is guaranteed that PushClosure will use exactly one upvalue.
+func (l *State) PushClosure(n int, f Function) {
+	if n < 0 || n > 254 {
+		panic("invalid upvalue count")
+	}
 	l.init()
+	l.checkElems(n)
 	// pushHandle handles checking the stack.
 	l.pushHandle(cgo.NewHandle(f))
-	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_callback), 1)
-	// top is still correct: pushcclosure with 1 upvalue is net zero.
+	l.Rotate(-(n + 1), 1)
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_callback), 1+C.int(n))
+	// lua_pushcclosure pops n+1, but pushes 1.
+	l.top -= n
 }
 
 // Global pushes onto the stack the value of the global with the given name,
@@ -1284,7 +1305,7 @@ const (
 // that loads the basic library.
 // The print function will write to the given writer.
 func (l *State) PushOpenBase(out io.Writer) {
-	l.PushFunction(func(l *State) (int, error) {
+	l.PushClosure(0, func(l *State) (int, error) {
 		nArgs := l.Top()
 		C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_base), 0)
 		l.top++
@@ -1295,7 +1316,7 @@ func (l *State) PushOpenBase(out io.Writer) {
 			return 0, err
 		}
 
-		l.PushFunction(func(l *State) (int, error) {
+		l.PushClosure(0, func(l *State) (int, error) {
 			n := l.Top()
 			for i := 1; i <= n; i++ {
 				s, err := ToString(l, i)
@@ -1410,4 +1431,21 @@ func (l *State) pushHandle(handle cgo.Handle) {
 
 func isPseudo(i int) bool {
 	return i <= RegistryIndex
+}
+
+// UpvalueIndex returns the pseudo-index that represents the i-th upvalue
+// of the running function.
+// If i is outside the range [1, 255], UpvalueIndex panics.
+func UpvalueIndex(i int) int {
+	if i < 1 || i > 255 {
+		panic("invalid upvalue index")
+	}
+	return int(upvalueIndex(C.int(i + 1)))
+}
+
+// upvalueIndex returns the pseudo-index that represents the i-th upvalue
+// of the running function.
+// i must be in the range [1,256].
+func upvalueIndex(i C.int) C.int {
+	return C.LUA_REGISTRYINDEX - i
 }

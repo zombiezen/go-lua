@@ -144,29 +144,57 @@ func TestLightUserdata(t *testing.T) {
 	}
 }
 
-func TestPushFunction(t *testing.T) {
-	state := new(State)
-	defer func() {
-		if err := state.Close(); err != nil {
-			t.Error("Close:", err)
-		}
-	}()
+func TestPushClosure(t *testing.T) {
+	t.Run("NoUpvalues", func(t *testing.T) {
+		state := new(State)
+		defer func() {
+			if err := state.Close(); err != nil {
+				t.Error("Close:", err)
+			}
+		}()
 
-	const want = 42
-	state.PushFunction(func(l *State) (int, error) {
-		l.PushInteger(want)
-		return 1, nil
-	})
-	if err := state.Call(0, 1, 0); err != nil {
-		t.Fatal(err)
-	}
-	if got, ok := state.ToInteger(-1); got != want || !ok {
-		value, err := ToString(state, -1)
-		if err != nil {
-			value = "<unknown value>"
+		const want = 42
+		state.PushClosure(0, func(l *State) (int, error) {
+			l.PushInteger(want)
+			return 1, nil
+		})
+		if err := state.Call(0, 1, 0); err != nil {
+			t.Fatal(err)
 		}
-		t.Errorf("function returned %s; want %d", value, err)
-	}
+		if got, ok := state.ToInteger(-1); got != want || !ok {
+			value, err := ToString(state, -1)
+			if err != nil {
+				value = "<unknown value>"
+			}
+			t.Errorf("function returned %s; want %d", value, err)
+		}
+	})
+
+	t.Run("Upvalues", func(t *testing.T) {
+		state := new(State)
+		defer func() {
+			if err := state.Close(); err != nil {
+				t.Error("Close:", err)
+			}
+		}()
+
+		const want = 42
+		state.PushInteger(want)
+		state.PushClosure(1, func(l *State) (int, error) {
+			l.PushValue(UpvalueIndex(1))
+			return 1, nil
+		})
+		if err := state.Call(0, 1, 0); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := state.ToInteger(-1); got != want || !ok {
+			value, err := ToString(state, -1)
+			if err != nil {
+				value = "<unknown value>"
+			}
+			t.Errorf("function returned %s; want %d", value, err)
+		}
+	})
 }
 
 func TestBasicLibrary(t *testing.T) {

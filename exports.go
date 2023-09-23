@@ -76,10 +76,3 @@ func zombiezen_lua_gchandle(l *C.lua_State) C.int {
 	}
 	return 0
 }
-
-// upvalueIndex returns the pseudo-index that represents the i-th upvalue
-// of the running function.
-// i must be in the range [1,256].
-func upvalueIndex(i C.int) C.int {
-	return C.LUA_REGISTRYINDEX - i
-}
