@@ -115,6 +115,20 @@ func TestPushGoValue(t *testing.T) {
 	}
 }
 
+func TestInvalidToGoValue(t *testing.T) {
+	state := new(State)
+	defer func() {
+		if err := state.Close(); err != nil {
+			t.Error("Close:", err)
+		}
+	}()
+
+	state.NewUserdataUV(0)
+	if got := state.ToGoValue(1); got != nil {
+		t.Errorf("state.ToGoValue(1) = %#v; want <nil>", got)
+	}
+}
+
 func TestLightUserdata(t *testing.T) {
 	state := new(State)
 	defer func() {

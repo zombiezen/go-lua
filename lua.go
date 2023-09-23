@@ -203,6 +203,18 @@ type State struct {
 	cap int
 }
 
+// stateForCallback returns a new State for the given *lua_State.
+// stateForCallback assumes that it is called
+// before any other functions are called on the *lua_State.
+func stateForCallback(ptr *C.lua_State) *State {
+	l := &State{
+		ptr: ptr,
+		top: int(C.lua_gettop(ptr)),
+	}
+	l.cap = l.top + C.LUA_MINSTACK
+	return l
+}
+
 func (l *State) init() {
 	if l.ptr == nil {
 		l.ptr = C.luaL_newstate()
@@ -242,6 +254,10 @@ func (l *State) AbsIndex(idx int) int {
 }
 
 func (l *State) isValidIndex(idx int) bool {
+	if idx == goClosureUpvalueIndex {
+		// Forbid users of the package from accessing the GoClosure upvalue.
+		return false
+	}
 	if isPseudo(idx) {
 		return true
 	}
@@ -604,21 +620,8 @@ func (l *State) ToGoValue(idx int) any {
 	if !l.isAcceptableIndex(idx) {
 		panic("unacceptable index")
 	}
-	p := C.lua_touserdata(l.ptr, C.int(idx))
-	if p == nil {
-		return nil
-	}
-	if !l.Metatable(idx) {
-		return nil
-	}
-	Metatable(l, handleMetatableName)
-	ok := l.RawEqual(-1, -2)
-	l.Pop(2)
-	if !ok {
-		return nil
-	}
-	handlePtr := (*cgo.Handle)(p)
-	if *handlePtr == 0 {
+	handlePtr := l.testHandle(idx)
+	if handlePtr == nil || *handlePtr == 0 {
 		return nil
 	}
 	return handlePtr.Value()
@@ -727,10 +730,12 @@ func (l *State) PushLightUserdata(p uintptr) {
 // The value can be retrieved later with [State.ToGoValue].
 //
 // PushGoValue creates a userdata with a metatable
-// that has a __gc method to remove the reference to the Go value.
+// that has a __gc method to clean up the reference to the Go value
+// when it is garbage-collected by Lua.
 // If the metatable is tampered with, then the Go value can be leaked.
-// Thus, when working with untrusted code, these userdata values should be hidden
-// (usually by placing in upvalues or userdata user values).
+// The metatable has the __metatable field set to false,
+// so it cannot be accessed through Lua's getmetatable function in the basic library,
+// but it is still accessible through the Go/C API and debug interfaces.
 func (l *State) PushGoValue(v any) {
 	if v == nil {
 		l.PushNil()
@@ -969,6 +974,10 @@ func (l *State) Metatable(idx int) bool {
 	if !l.isAcceptableIndex(idx) {
 		panic("unacceptable index")
 	}
+	return l.metatable(idx)
+}
+
+func (l *State) metatable(idx int) bool {
 	ok := C.lua_getmetatable(l.ptr, C.int(idx)) != 0
 	if ok {
 		l.top++
@@ -1424,14 +1433,40 @@ func (l *State) pushHandle(handle cgo.Handle) {
 	if NewMetatable(l, handleMetatableName) {
 		C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_gchandle), 0)
 		l.top++
-		l.SetField(-2, "__gc", 0) // metatable.__gc = zombiezen_lua_gchandle
+		l.RawSetField(-2, "__gc") // metatable.__gc = zombiezen_lua_gchandle
+		// Prevent access of metatable from Lua.
+		// The basic library's getmetatable function obeys this metafield.
+		l.PushBoolean(false)
+		l.RawSetField(-2, "__metatable") // metatable.__metatable = false
 	}
 	l.SetMetatable(-2)
+}
+
+func (l *State) testHandle(idx int) *cgo.Handle {
+	p := C.lua_touserdata(l.ptr, C.int(idx))
+	if p == nil {
+		return nil
+	}
+	if !l.metatable(idx) {
+		return nil
+	}
+	tp := Metatable(l, handleMetatableName)
+	// Since we lazily create the cgo.Handle metatable,
+	// we only want this to succeed if the metatable is not nil.
+	// Otherwise, this is an unknown pointer we would be dereferencing.
+	ok := tp == TypeTable && l.RawEqual(-1, -2)
+	l.Pop(2)
+	if !ok {
+		return nil
+	}
+	return (*cgo.Handle)(p)
 }
 
 func isPseudo(i int) bool {
 	return i <= RegistryIndex
 }
+
+const goClosureUpvalueIndex = C.LUA_REGISTRYINDEX - 1
 
 // UpvalueIndex returns the pseudo-index that represents the i-th upvalue
 // of the running function.
@@ -1440,12 +1475,5 @@ func UpvalueIndex(i int) int {
 	if i < 1 || i > 255 {
 		panic("invalid upvalue index")
 	}
-	return int(upvalueIndex(C.int(i + 1)))
-}
-
-// upvalueIndex returns the pseudo-index that represents the i-th upvalue
-// of the running function.
-// i must be in the range [1,256].
-func upvalueIndex(i C.int) C.int {
-	return C.LUA_REGISTRYINDEX - i
+	return C.LUA_REGISTRYINDEX - (i + 1)
 }
