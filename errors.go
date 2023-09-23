@@ -21,9 +21,13 @@
 
 package lua
 
+import (
+	"errors"
+	"fmt"
+)
+
 // #include "lua.h"
 import "C"
-import "errors"
 
 type luaError struct {
 	code C.int
@@ -62,4 +66,27 @@ func unwrapError(err error) error {
 		return e
 	}
 	return err
+}
+
+// NewArgError returns a new error reporting a problem with argument arg
+// of the Go function that called it,
+// using a standard message that includes msg as a comment.
+func NewArgError(l *State, arg int, msg string) error {
+	// TODO(soon): Use debug information.
+	return fmt.Errorf("bad argument #%d (%s)", arg, msg)
+}
+
+// NewTypeError returns a new type error for the argument arg
+// of the Go function that called it, using a standard message;
+// tname is a "name" for the expected type.
+func NewTypeError(l *State, arg int, tname string) error {
+	var typeArg string
+	if Metafield(l, arg, "__name") == TypeString {
+		typeArg, _ = l.ToString(-1)
+	} else if tp := l.Type(arg); tp == TypeLightUserdata {
+		typeArg = "light userdata"
+	} else {
+		typeArg = tp.String()
+	}
+	return NewArgError(l, arg, fmt.Sprintf("%s expected, got %s", tname, typeArg))
 }

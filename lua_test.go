@@ -22,7 +22,6 @@
 package lua
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 )
@@ -250,33 +249,6 @@ func TestPushClosure(t *testing.T) {
 			t.Errorf("function returned %s; want %d", value, want)
 		}
 	})
-}
-
-func TestBasicLibrary(t *testing.T) {
-	state := new(State)
-	defer func() {
-		if err := state.Close(); err != nil {
-			t.Error("Close:", err)
-		}
-	}()
-
-	out := new(bytes.Buffer)
-	state.PushOpenBase(out)
-	if err := Require(state, GName, true); err != nil {
-		t.Error(err)
-	}
-	if _, err := state.Global("print", 0); err != nil {
-		t.Fatal(err)
-	}
-	state.PushString("Hello, World!")
-	state.PushInteger(42)
-	if err := state.Call(2, 0, 0); err != nil {
-		t.Fatal(err)
-	}
-
-	if got, want := out.String(), "Hello, World!\t42\n"; got != want {
-		t.Errorf("output = %q; want %q", got, want)
-	}
 }
 
 func BenchmarkExec(b *testing.B) {

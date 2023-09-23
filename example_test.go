@@ -24,7 +24,6 @@ package lua_test
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"zombiezen.com/go/lua"
 )
@@ -34,7 +33,7 @@ func Example() {
 	// and make the standard libraries available.
 	state := new(lua.State)
 	defer state.Close()
-	if err := lua.OpenLibraries(state, os.Stdout); err != nil {
+	if err := lua.OpenLibraries(state); err != nil {
 		log.Fatal(err)
 	}
 

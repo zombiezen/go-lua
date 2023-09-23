@@ -23,56 +23,8 @@ package lua
 
 import (
 	"fmt"
-	"io"
 	"strconv"
 )
-
-// OpenLibraries opens all standard Lua libraries into the given state.
-func OpenLibraries(l *State, out io.Writer) error {
-	l.PushOpenBase(out)
-	if err := Require(l, GName, true); err != nil {
-		return err
-	}
-	l.Pop(1)
-
-	l.PushOpenCoroutine()
-	if err := Require(l, CoroutineLibraryName, true); err != nil {
-		return err
-	}
-	l.Pop(1)
-
-	l.PushOpenTable()
-	if err := Require(l, TableLibraryName, true); err != nil {
-		return err
-	}
-	l.Pop(1)
-
-	l.PushOpenString()
-	if err := Require(l, StringLibraryName, true); err != nil {
-		return err
-	}
-	l.Pop(1)
-
-	l.PushOpenMath()
-	if err := Require(l, MathLibraryName, true); err != nil {
-		return err
-	}
-	l.Pop(1)
-
-	l.PushOpenUTF8()
-	if err := Require(l, UTF8LibraryName, true); err != nil {
-		return err
-	}
-	l.Pop(1)
-
-	l.PushOpenDebug()
-	if err := Require(l, DebugLibraryName, true); err != nil {
-		return err
-	}
-	l.Pop(1)
-
-	return nil
-}
 
 // Metafield pushes onto the stack the field event
 // from the metatable of the object at index obj
@@ -172,6 +124,20 @@ func ToString(l *State, idx int) (string, error) {
 	}
 }
 
+// CheckInteger checks whether the function argument arg is an integer
+// (or can be converted to an integer)
+// and returns this integer.
+func CheckInteger(l *State, arg int) (int64, error) {
+	d, ok := l.ToInteger(arg)
+	if !ok {
+		if l.IsNumber(arg) {
+			return 0, NewArgError(l, arg, "number has no integer representation")
+		}
+		return 0, NewTypeError(l, arg, TypeNumber.String())
+	}
+	return d, nil
+}
+
 // NewMetatable gets or creates a table in the registry
 // to be used as a metatable for userdata.
 // If the table is created, adds the pair __name = tname,
@@ -234,25 +200,23 @@ func Subtable(l *State, idx int, fname string) (bool, error) {
 	return false, nil
 }
 
-// Require loads a module using the function at the top of the stack.
+// Require loads a module using the given openf function.
 // If package.loaded[modName] is not true,
 // Require calls the function with the string modName as an argument
 // and sets the call result to package.loaded[modName],
 // as if that function has been called through require.
 // If global is true, also stores the module into the global modName.
 // Leaves a copy of the module on the stack.
-func Require(l *State, modName string, global bool) error {
+func Require(l *State, modName string, global bool, openf Function) error {
 	if _, err := Subtable(l, RegistryIndex, LoadedTable); err != nil {
 		return fmt.Errorf("lua: require %q: %w", modName, err)
 	}
 	if _, err := l.Field(-1, modName, 0); err != nil {
 		return fmt.Errorf("lua: require %q: %w", modName, err)
 	}
-	if l.ToBoolean(-1) {
-		l.Remove(-3) // remove open function
-	} else {
-		l.Pop(1)         // remove field
-		l.Rotate(-2, -1) // move function to top
+	if !l.ToBoolean(-1) {
+		l.Pop(1) // remove field
+		l.PushClosure(0, openf)
 		l.PushString(modName)
 		if err := l.Call(1, 1, 0); err != nil {
 			return fmt.Errorf("lua: require %q: %w", modName, err)

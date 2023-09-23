@@ -1238,7 +1238,7 @@ func (l *State) Call(nArgs, nResults, msgHandler int) error {
 	ret := C.lua_pcallk(l.ptr, C.int(nArgs), C.int(nResults), C.int(msgHandler), 0, nil)
 	if ret != C.LUA_OK {
 		l.top -= toPop - 1
-		return fmt.Errorf("lua: call: %w", l.newError(ret))
+		return l.newError(ret)
 	}
 	if newTop >= 0 {
 		l.top = newTop
@@ -1388,69 +1388,16 @@ const (
 	PackageLibraryName   = C.LUA_LOADLIBNAME
 )
 
-// PushOpenBase pushes a function onto the stack
-// that loads the basic library.
-// The print function will write to the given writer.
-func (l *State) PushOpenBase(out io.Writer) {
-	l.PushClosure(0, func(l *State) (int, error) {
-		nArgs := l.Top()
-		C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_base), 0)
-		l.top++
-		for i := 1; i <= nArgs; i++ {
-			l.PushValue(i)
-		}
-		if err := l.Call(nArgs, 1, 0); err != nil {
-			return 0, err
-		}
-
-		l.PushClosure(0, func(l *State) (int, error) {
-			n := l.Top()
-			for i := 1; i <= n; i++ {
-				s, err := ToString(l, i)
-				if err != nil {
-					return 0, err
-				}
-				if i > 1 {
-					io.WriteString(out, "\t")
-				}
-				io.WriteString(out, s)
-			}
-			io.WriteString(out, "\n")
-			return 0, nil
-		})
-		l.RawSetField(-2, "print")
-		return 1, nil
-	})
-}
-
-func (l *State) PushOpenString() {
+func pushOpenBase(l *State) {
 	l.init()
 	if l.top >= l.cap {
 		panic("stack overflow")
 	}
-	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_string), 0)
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_base), 0)
 	l.top++
 }
 
-func (l *State) PushOpenUTF8() {
-	l.init()
-	if l.top >= l.cap {
-		panic("stack overflow")
-	}
-	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_utf8), 0)
-	l.top++
-}
-
-func (l *State) PushOpenTable() {
-	l.init()
-	if l.top >= l.cap {
-		panic("stack overflow")
-	}
-	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_table), 0)
-	l.top++
-}
-
-func (l *State) PushOpenCoroutine() {
+func pushOpenCoroutine(l *State) {
 	l.init()
 	if l.top >= l.cap {
 		panic("stack overflow")
@@ -1459,7 +1406,52 @@ func (l *State) PushOpenCoroutine() {
 	l.top++
 }
 
-func (l *State) PushOpenMath() {
+func pushOpenTable(l *State) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_table), 0)
+	l.top++
+}
+
+func pushOpenIO(l *State) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_io), 0)
+	l.top++
+}
+
+func pushOpenOS(l *State) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_os), 0)
+	l.top++
+}
+
+func pushOpenString(l *State) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_string), 0)
+	l.top++
+}
+
+func pushOpenUTF8(l *State) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_utf8), 0)
+	l.top++
+}
+
+func pushOpenMath(l *State) {
 	l.init()
 	if l.top >= l.cap {
 		panic("stack overflow")
@@ -1468,12 +1460,21 @@ func (l *State) PushOpenMath() {
 	l.top++
 }
 
-func (l *State) PushOpenDebug() {
+func pushOpenDebug(l *State) {
 	l.init()
 	if l.top >= l.cap {
 		panic("stack overflow")
 	}
 	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_debug), 0)
+	l.top++
+}
+
+func pushOpenPackage(l *State) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.luaopen_package), 0)
 	l.top++
 }
 
