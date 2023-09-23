@@ -1342,6 +1342,37 @@ func loadMode(mode string) (*C.char, error) {
 	}
 }
 
+// Next pops a key from the stack,
+// and pushes a key–value pair from the table at the given index,
+// the "next" pair after the given key.
+// If there are no more elements in the table,
+// then Next returns false and pushes nothing.
+//
+// While traversing a table,
+// avoid calling [State.ToString] directly on a key,
+// unless you know that the key is actually a string.
+// Recall that [State.ToString] may change the value at the given index;
+// this confuses the next call to Next.
+//
+// This behavior of this function is undefined if the given key
+// is neither nil nor present in the table.
+// See function [next] for the caveats of modifying the table during its traversal.
+//
+// [next]: https://www.lua.org/manual/5.4/manual.html#pdf-next
+func (l *State) Next(idx int) bool {
+	l.checkElems(1)
+	if !l.isAcceptableIndex(idx) {
+		panic("unacceptable index")
+	}
+	ok := C.lua_next(l.ptr, C.int(idx)) != 0
+	if ok {
+		l.top++
+	} else {
+		l.top--
+	}
+	return ok
+}
+
 // Standard library names.
 const (
 	GName = C.LUA_GNAME
