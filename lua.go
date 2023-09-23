@@ -1383,7 +1383,6 @@ func (l *State) PushOpenBase(out io.Writer) {
 					io.WriteString(out, "\t")
 				}
 				io.WriteString(out, s)
-				l.Pop(1)
 			}
 			io.WriteString(out, "\n")
 			return 0, nil

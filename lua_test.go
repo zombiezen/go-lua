@@ -269,11 +269,12 @@ func TestBasicLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	state.PushString("Hello, World!")
-	if err := state.Call(1, 0, 0); err != nil {
+	state.PushInteger(42)
+	if err := state.Call(2, 0, 0); err != nil {
 		t.Fatal(err)
 	}
 
-	if got, want := out.String(), "Hello, World!\n"; got != want {
+	if got, want := out.String(), "Hello, World!\t42\n"; got != want {
 		t.Errorf("output = %q; want %q", got, want)
 	}
 }
