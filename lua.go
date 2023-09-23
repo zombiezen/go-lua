@@ -955,6 +955,8 @@ func (l *State) CreateTable(nArr, nRec int) {
 
 // NewUserdataUV creates and pushes on the stack a new full userdata,
 // with nUValue associated Lua values, called user values.
+// These values can be accessed or modified
+// using [State.UserValue] and [State.SetUserValue] respectively.
 func (l *State) NewUserdataUV(nUValue int) {
 	l.init()
 	if l.top >= l.cap {
@@ -983,6 +985,29 @@ func (l *State) metatable(idx int) bool {
 		l.top++
 	}
 	return ok
+}
+
+// UserValue pushes onto the stack the n-th user value
+// associated with the full userdata at the given index
+// and returns the type of the pushed value.
+// If the userdata does not have that value, pushes nil and returns [TypeNone].
+// (As with other Lua APIs, the first user value is n=1.)
+func (l *State) UserValue(idx int, n int) Type {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	if !l.isAcceptableIndex(idx) {
+		panic("unacceptable index")
+	}
+	tp := TypeNone
+	if n < 1 {
+		C.lua_pushnil(l.ptr)
+	} else {
+		tp = Type(C.lua_getiuservalue(l.ptr, C.int(idx), C.int(n)))
+	}
+	l.top++
+	return tp
 }
 
 // SetGlobal pops a value from the stack
@@ -1133,6 +1158,28 @@ func (l *State) SetMetatable(objIndex int) {
 	}
 	C.lua_setmetatable(l.ptr, C.int(objIndex))
 	l.top--
+}
+
+// SetUserValue pops a value from the stack
+// and sets it as the new n-th user value
+// associated to the full userdata at the given index,
+// reporting if the userdata has that value.
+// (As with other Lua APIs, the first user value is n=1.)
+func (l *State) SetUserValue(idx int, n int) bool {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	if !l.isAcceptableIndex(idx) {
+		panic("unacceptable index")
+	}
+	if n < 1 {
+		l.Pop(1)
+		return false
+	}
+	ok := C.lua_setiuservalue(l.ptr, C.int(idx), C.int(n)) != 0
+	l.top--
+	return ok
 }
 
 // Call calls a function (or callable object) in protected mode.

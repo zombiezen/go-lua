@@ -129,6 +129,47 @@ func TestInvalidToGoValue(t *testing.T) {
 	}
 }
 
+func TestFullUserdata(t *testing.T) {
+	state := new(State)
+	defer func() {
+		if err := state.Close(); err != nil {
+			t.Error("Close:", err)
+		}
+	}()
+
+	const want = 42
+	state.NewUserdataUV(1)
+	state.PushInteger(want)
+	if !state.SetUserValue(-2, 1) {
+		t.Error("Userdata does not have value 1")
+	}
+	if got, want := state.UserValue(-1, 1), TypeNumber; got != want {
+		t.Errorf("user value 1 type = %v; want %v", got, want)
+	}
+	if got, ok := state.ToInteger(-1); got != want || !ok {
+		value, err := ToString(state, -1)
+		if err != nil {
+			value = "<unknown value>"
+		}
+		t.Errorf("user value 1 = %s; want %d", value, want)
+	}
+	state.Pop(1)
+
+	if got, want := state.UserValue(-1, 2), TypeNone; got != want {
+		t.Errorf("user value 2 type = %v; want %v", got, want)
+	}
+	if got, want := state.Top(), 2; got != want {
+		t.Errorf("after state.UserValue(-1, 2), state.Top() = %d; want %d", got, want)
+	}
+	if !state.IsNil(-1) {
+		value, err := ToString(state, -1)
+		if err != nil {
+			value = "<unknown value>"
+		}
+		t.Errorf("user value 2 = %s; want nil", value)
+	}
+}
+
 func TestLightUserdata(t *testing.T) {
 	state := new(State)
 	defer func() {
@@ -180,7 +221,7 @@ func TestPushClosure(t *testing.T) {
 			if err != nil {
 				value = "<unknown value>"
 			}
-			t.Errorf("function returned %s; want %d", value, err)
+			t.Errorf("function returned %s; want %d", value, want)
 		}
 	})
 
@@ -206,7 +247,7 @@ func TestPushClosure(t *testing.T) {
 			if err != nil {
 				value = "<unknown value>"
 			}
-			t.Errorf("function returned %s; want %d", value, err)
+			t.Errorf("function returned %s; want %d", value, want)
 		}
 	})
 }
