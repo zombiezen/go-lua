@@ -34,6 +34,7 @@ import (
 // #cgo unix LDFLAGS: -lm
 // #include <stdlib.h>
 // #include <stddef.h>
+// #include <stdint.h>
 // #include "lua.h"
 // #include "lauxlib.h"
 // #include "lualib.h"
@@ -105,6 +106,10 @@ import (
 //   lua_pushvalue(L, index);
 //   lua_rotate(L, -4, -2);
 //   return lua_pcall(L, 3, 0, msgh);
+// }
+//
+// static void pushlightuserdata(lua_State *L, uint64_t p) {
+//   lua_pushlightuserdata(L, (void *)p);
 // }
 import "C"
 
@@ -589,6 +594,36 @@ func (l *State) RawLen(idx int) uint64 {
 	return uint64(C.lua_rawlen(l.ptr, C.int(idx)))
 }
 
+// ToGoValue converts the Lua value at the given index to a Go value.
+// The Lua value must be a userdata previously created by [State.PushGoValue];
+// otherwise the function returns nil.
+func (l *State) ToGoValue(idx int) any {
+	if l.ptr == nil {
+		return nil
+	}
+	if !l.isAcceptableIndex(idx) {
+		panic("unacceptable index")
+	}
+	p := C.lua_touserdata(l.ptr, C.int(idx))
+	if p == nil {
+		return nil
+	}
+	if !l.Metatable(idx) {
+		return nil
+	}
+	Metatable(l, handleMetatableName)
+	ok := l.RawEqual(-1, -2)
+	l.Pop(2)
+	if !ok {
+		return nil
+	}
+	handlePtr := (*cgo.Handle)(p)
+	if *handlePtr == 0 {
+		return nil
+	}
+	return handlePtr.Value()
+}
+
 // ToPointer converts the value at the given index to a generic pointer
 // and returns its numeric address.
 // The value can be a userdata, a table, a thread, a string, or a function;
@@ -669,6 +704,40 @@ func (l *State) PushBoolean(b bool) {
 	}
 	C.lua_pushboolean(l.ptr, i)
 	l.top++
+}
+
+// PushLightUserdata pushes a light userdata onto the stack.
+//
+// Userdata represent C or Go values in Lua.
+// A light userdata represents a pointer.
+// It is a value (like a number): you do not create it, it has no individual metatable,
+// and it is not collected (as it was never created).
+// A light userdata is equal to "any" light userdata with the same address.
+func (l *State) PushLightUserdata(p uintptr) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.pushlightuserdata(l.ptr, C.uint64_t(p))
+	l.top++
+}
+
+// PushGoValue pushes a Go userdata onto the stack.
+// If v is nil, a nil will be pushed instead.
+// The value can be retrieved later with [State.ToGoValue].
+//
+// PushGoValue creates a userdata with a metatable
+// that has a __gc method to remove the reference to the Go value.
+// If the metatable is tampered with, then the Go value can be leaked.
+// Thus, when working with untrusted code, these userdata values should be hidden
+// (usually by placing in upvalues or userdata user values).
+func (l *State) PushGoValue(v any) {
+	if v == nil {
+		l.PushNil()
+	} else {
+		l.init()
+		l.pushHandle(cgo.NewHandle(v))
+	}
 }
 
 // A Function is a callback for Lua function implemented in Go.
@@ -855,6 +924,17 @@ func (l *State) CreateTable(nArr, nRec int) {
 		panic("stack overflow")
 	}
 	C.lua_createtable(l.ptr, C.int(nArr), C.int(nRec))
+	l.top++
+}
+
+// NewUserdataUV creates and pushes on the stack a new full userdata,
+// with nUValue associated Lua values, called user values.
+func (l *State) NewUserdataUV(nUValue int) {
+	l.init()
+	if l.top >= l.cap {
+		panic("stack overflow")
+	}
+	C.lua_newuserdatauv(l.ptr, 0, C.int(nUValue))
 	l.top++
 }
 
@@ -1311,15 +1391,16 @@ func (r *reader) free() {
 	}
 }
 
+const handleMetatableName = "runtime/cgo.Handle"
+
 func (l *State) pushHandle(handle cgo.Handle) {
-	const metatableName = "runtime/cgo.Handle"
 	if !l.CheckStack(3) {
 		panic("stack overflow")
 	}
 	ptr := (*cgo.Handle)(C.lua_newuserdatauv(l.ptr, C.size_t(unsafe.Sizeof(cgo.Handle(0))), 0))
 	*ptr = handle
 	l.top++
-	if NewMetatable(l, metatableName) {
+	if NewMetatable(l, handleMetatableName) {
 		C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_gchandle), 0)
 		l.top++
 		l.SetField(-2, "__gc", 0) // metatable.__gc = zombiezen_lua_gchandle

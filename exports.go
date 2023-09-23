@@ -50,15 +50,19 @@ func zombiezen_lua_gocb(l *C.lua_State) C.int {
 	}
 	state.cap = state.top + C.LUA_MINSTACK
 
-	ptr := (*cgo.Handle)(C.lua_touserdata(l, upvalueIndex(1)))
-	f := ptr.Value().(Function)
+	f, ok := state.ToGoValue(int(upvalueIndex(1))).(Function)
+	if !ok {
+		C.zombiezen_lua_pushstring(l, "Go closure upvalue corrupted")
+		return -1
+	}
 	results, err := f.pcall(state)
 	if err != nil {
 		C.zombiezen_lua_pushstring(l, err.Error())
 		return -1
 	}
 	if results < 0 {
-		return 0
+		C.zombiezen_lua_pushstring(l, "Go callback returned negative results")
+		return -1
 	}
 	return C.int(results)
 }
@@ -66,7 +70,10 @@ func zombiezen_lua_gocb(l *C.lua_State) C.int {
 //export zombiezen_lua_gchandle
 func zombiezen_lua_gchandle(l *C.lua_State) C.int {
 	ptr := (*cgo.Handle)(C.lua_touserdata(l, 1))
-	ptr.Delete()
+	if *ptr != 0 {
+		ptr.Delete()
+		*ptr = 0
+	}
 	return 0
 }
 

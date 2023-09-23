@@ -75,6 +75,75 @@ func TestLoadString(t *testing.T) {
 	}
 }
 
+func TestPushGoValue(t *testing.T) {
+	tests := []struct {
+		name string
+		v    any
+		tp   Type
+	}{
+		{
+			name: "Nil",
+			v:    nil,
+			tp:   TypeNil,
+		},
+		{
+			name: "Number",
+			v:    42,
+			tp:   TypeUserdata,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := new(State)
+			defer func() {
+				if err := state.Close(); err != nil {
+					t.Error("Close:", err)
+				}
+			}()
+
+			state.PushGoValue(test.v)
+			if got, want := state.Top(), 1; got != want {
+				t.Fatalf("state.Top() = %d; want %d", got, want)
+			}
+			if got := state.Type(-1); got != test.tp {
+				t.Errorf("state.Type(-1) = %v; want %v", got, test.tp)
+			}
+			if got := state.ToGoValue(-1); got != test.v {
+				t.Errorf("state.ToGoValue(-1) = %#v; want %#v", got, test.v)
+			}
+		})
+	}
+}
+
+func TestLightUserdata(t *testing.T) {
+	state := new(State)
+	defer func() {
+		if err := state.Close(); err != nil {
+			t.Error("Close:", err)
+		}
+	}()
+
+	vals := []uintptr{0, 42}
+	for _, p := range vals {
+		state.PushLightUserdata(p)
+	}
+
+	if got, want := state.Top(), len(vals); got != want {
+		t.Fatalf("state.Top() = %d; want %d", got, want)
+	}
+	for i := 1; i <= len(vals); i++ {
+		if got, want := state.Type(i), TypeLightUserdata; got != want {
+			t.Errorf("state.Type(%d) = %v; want %v", i, got, want)
+		}
+		if !state.IsUserdata(i) {
+			t.Errorf("state.IsUserdata(%d) = false; want true", i)
+		}
+		if got, want := state.ToPointer(i), vals[i-1]; got != want {
+			t.Errorf("state.ToPointer(%d) = %#x; want %#x", i, got, want)
+		}
+	}
+}
+
 func TestPushFunction(t *testing.T) {
 	state := new(State)
 	defer func() {
