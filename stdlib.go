@@ -41,7 +41,7 @@ func OpenLibraries(l *State) error {
 		{CoroutineLibraryName, OpenCoroutine},
 		{TableLibraryName, OpenTable},
 		// TODO(soon): {IOLibraryName, NewOpenIO},
-		// TODO(soon): {OSLibraryName, NewOpenOS},
+		{OSLibraryName, NewOSLibrary().OpenLibrary},
 		{StringLibraryName, OpenString},
 		{UTF8LibraryName, OpenUTF8},
 		{MathLibraryName, NewOpenMath(nil)},
@@ -293,4 +293,20 @@ func OpenPackage(l *State) (int, error) {
 		return 0, err
 	}
 	return l.Top(), nil
+}
+
+func pushFileResult(l *State, err error) int {
+	// TODO(someday): Test for syscall.Errno.
+	if err == nil {
+		l.PushBoolean(true)
+		return 1
+	}
+	pushFail(l)
+	l.PushString(err.Error())
+	l.PushInteger(1)
+	return 3
+}
+
+func pushFail(l *State) {
+	l.PushNil()
 }

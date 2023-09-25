@@ -124,6 +124,18 @@ func ToString(l *State, idx int) (string, error) {
 	}
 }
 
+// CheckString checks whether the function argument arg is a string
+// and returns this string.
+// This function uses [State.ToString] to get its result,
+// so all conversions and caveats of that function apply here.
+func CheckString(l *State, arg int) (string, error) {
+	s, ok := l.ToString(arg)
+	if !ok {
+		return "", NewTypeError(l, arg, TypeString.String())
+	}
+	return s, nil
+}
+
 // CheckInteger checks whether the function argument arg is an integer
 // (or can be converted to an integer)
 // and returns this integer.
