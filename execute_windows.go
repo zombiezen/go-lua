@@ -22,6 +22,7 @@
 package lua
 
 import (
+	"errors"
 	"os/exec"
 	"syscall"
 )

@@ -19,6 +19,8 @@
 //
 // SPDX-License-Identifier: MIT
 
+//go:build unix
+
 package lua
 
 import (
