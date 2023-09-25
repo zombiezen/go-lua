@@ -154,7 +154,7 @@ func (lib *OSLibrary) date(l *State) (int, error) {
 	} else {
 		s, err := strftime(t, format)
 		if err != nil {
-			return 0, err
+			return 0, NewArgError(l, 1, err.Error())
 		}
 		l.PushString(s)
 	}
@@ -326,16 +326,16 @@ func timeField(l *State, key string, d int) (int, error) {
 	if !ok {
 		// TODO(soon): Add where information to errors.
 		if tp != TypeNil {
-			return 0, fmt.Errorf("field '%s' is not an integer", key)
+			return 0, fmt.Errorf("%sfield '%s' is not an integer", Where(l, 1), key)
 		}
 		if d < 0 {
-			return 0, fmt.Errorf("field '%s' missing in date table", key)
+			return 0, fmt.Errorf("%sfield '%s' missing in date table", Where(l, 1), key)
 		}
 		return d, nil
 	}
 
 	if !(math.MinInt <= res && res <= math.MaxInt) {
-		return 0, fmt.Errorf("field '%s' is out-of-bound", key)
+		return 0, fmt.Errorf("%sfield '%s' is out-of-bound", Where(l, 1), key)
 	}
 	return int(res), nil
 }

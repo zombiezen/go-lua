@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"runtime/cgo"
+	"strings"
 	"unsafe"
 )
 
@@ -1371,6 +1372,187 @@ func (l *State) Next(idx int) bool {
 		l.top--
 	}
 	return ok
+}
+
+// Stack returns an identifier of the activation record
+// of the function executing at the given level.
+// Level 0 is the current running function,
+// whereas level n+1 is the function that has called level n
+// (except for tail calls, which do not count in the stack).
+// When called with a level greater than the stack depth, Stack returns nil.
+func (l *State) Stack(level int) *ActivationRecord {
+	l.init()
+	ar := new(C.lua_Debug)
+	if C.lua_getstack(l.ptr, C.int(level), ar) == 0 {
+		return nil
+	}
+	return &ActivationRecord{
+		state: l,
+		lptr:  l.ptr,
+		ar:    ar,
+	}
+}
+
+// Info gets information about a specific function.
+// Each character in the string what
+// selects some fields of the [Debug] structure to be filled
+// or a value to be pushed on the stack.
+//
+//   - 'f': pushes onto the stack the function that is running at the given level;
+//   - 'l': fills in the field CurrentLine;
+//   - 'n': fills in the fields Name and NameWhat;
+//   - 'S': fills in the fields Source, ShortSource, LineDefined, LastLineDefined, and What;
+//   - 't': fills in the field IsTailCall;
+//   - 'u': fills in the fields NumUpvalues, NumParams, and IsVararg;
+//   - 'L': pushes onto the stack a table
+//     whose indices are the lines on the function with some associated code,
+//     that is, the lines where you can put a break point.
+//     (Lines with no code include empty lines and comments.)
+//     If this option is given together with option 'f',
+//     its table is pushed after the function.
+func (l *State) Info(what string) *Debug {
+	l.checkElems(1)
+
+	what = strings.TrimPrefix(what, ">")
+	cwhat := make([]C.char, 0, len(">\x00")+len(what))
+	cwhat = append(cwhat, '>')
+	for _, c := range []byte(what) {
+		cwhat = append(cwhat, C.char(c))
+	}
+	cwhat = append(cwhat, 0)
+
+	var tmp C.lua_Debug
+	return l.getinfo(&cwhat[0], &tmp)
+}
+
+func (l *State) getinfo(what *C.char, ar *C.lua_Debug) *Debug {
+	if *what == '>' {
+		l.top--
+	}
+
+	C.lua_getinfo(l.ptr, what, ar)
+
+	db := &Debug{
+		CurrentLine: -1,
+	}
+	pushFunction := false
+	pushLines := false
+	for ; *what != 0; what = (*C.char)(unsafe.Add(unsafe.Pointer(what), 1)) {
+		switch *what {
+		case 'f':
+			pushFunction = true
+		case 'l':
+			db.CurrentLine = int(ar.currentline)
+		case 'n':
+			if ar.name != nil {
+				db.Name = C.GoString(ar.name)
+			}
+			if ar.namewhat != nil {
+				db.NameWhat = C.GoString(ar.namewhat)
+			}
+		case 'S':
+			if ar.what != nil {
+				db.What = C.GoString(ar.what)
+			}
+			if ar.source != nil {
+				db.Source = C.GoStringN(ar.source, C.int(ar.srclen))
+			}
+			db.LineDefined = int(ar.linedefined)
+			db.LastLineDefined = int(ar.lastlinedefined)
+			db.ShortSource = C.GoString(&ar.short_src[0])
+		case 't':
+			db.IsTailCall = ar.istailcall != 0
+		case 'u':
+			db.NumUpvalues = uint8(ar.nups)
+			db.NumParams = uint8(ar.nparams)
+			db.IsVararg = ar.isvararg != 0
+		case 'L':
+			pushLines = true
+		}
+	}
+	if pushFunction {
+		l.top++
+	}
+	if pushLines {
+		l.top++
+	}
+	return db
+}
+
+// Debug holds information about a function or an activation record.
+type Debug struct {
+	// Name is a reasonable name for the given function.
+	// Because functions in Lua are first-class values, they do not have a fixed name:
+	// some functions can be the value of multiple global variables,
+	// while others can be stored only in a table field.
+	// The Info functions check how the function was called to find a suitable name.
+	// If they cannot find a name, then Name is set to the empty string.
+	Name string
+	// NameWhat explains the Name field.
+	// The value of NameWhat can be
+	// "global", "local", "method", "field", "upvalue", or the empty string,
+	// according to how the function was called.
+	// (Lua uses the empty string when no other option seems to apply.)
+	NameWhat string
+	// What is the string "Lua" if the function is a Lua function,
+	// "C" if it is a C or Go function,
+	// "main" if it is the main part of a chunk.
+	What string
+	// Source is the source of the chunk that created the function.
+	// If source starts with a '@',
+	// it means that the function was defined in a file where the file name follows the '@'.
+	// If source starts with a '=',
+	// the remainder of its contents describes the source in a user-dependent manner.
+	// Otherwise, the function was defined in a string where source is that string.
+	Source string
+	// ShortSource is a "printable" version of source, to be used in error messages.
+	ShortSource string
+	// CurrentLine is the current line where the given function is executing.
+	// When no line information is available, CurrentLine is set to -1.
+	CurrentLine int
+	// LineDefined is the line number where the definition of the function starts.
+	LineDefined int
+	// LastLineDefined is the line number where the definition of the function ends.
+	LastLineDefined int
+	// NumUpvalues is the number of upvalues of the function.
+	NumUpvalues uint8
+	// NumParams is the number of parameters of the function
+	// (always 0 for Go/C functions).
+	NumParams uint8
+	// IsVararg is true if the function is a variadic function
+	// (always true for Go/C functions).
+	IsVararg bool
+	// IsTailCall is true if this function invocation was called by a tail call.
+	// In this case, the caller of this level is not in the stack.
+	IsTailCall bool
+}
+
+// An ActivationRecord is a reference to a function invocation's activation record.
+type ActivationRecord struct {
+	state *State
+	lptr  *C.lua_State
+	ar    *C.lua_Debug
+}
+
+func (ar *ActivationRecord) isValid() bool {
+	return ar != nil && ar.state != nil && ar.state.ptr == ar.lptr
+}
+
+// Info gets information about the function invocation.
+// The what string is the same as for [State.Info].
+// If Info is called on a nil ActivationRecord
+// or the [State] it originated from has been closed,
+// then Info returns nil.
+func (ar *ActivationRecord) Info(what string) *Debug {
+	if strings.HasPrefix(what, ">") {
+		panic("what must not start with '>'")
+	}
+	if !ar.isValid() {
+		return nil
+	}
+	cwhat := C.CString(what)
+	defer C.free(unsafe.Pointer(cwhat))
+	return ar.state.getinfo(cwhat, ar.ar)
 }
 
 // Standard library names.

@@ -45,6 +45,11 @@ func zombiezen_lua_readercb(l *C.lua_State, data unsafe.Pointer, size *C.size_t)
 //export zombiezen_lua_gocb
 func zombiezen_lua_gocb(l *C.lua_State) C.int {
 	state := stateForCallback(l)
+	defer func() {
+		// Once the callback has finished, clear the State.
+		// This prevents incorrect usage, especially with ActivationRecords.
+		*state = State{}
+	}()
 	handlePtr := state.testHandle(goClosureUpvalueIndex)
 	if handlePtr == nil || *handlePtr == 0 {
 		C.zombiezen_lua_pushstring(l, "Go closure upvalue corrupted")

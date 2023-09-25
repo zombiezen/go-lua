@@ -186,6 +186,24 @@ func SetMetatable(l *State, tname string) {
 	l.SetMetatable(-2)
 }
 
+// Where returns a string identifying the current position of the control
+// at the given level in the call stack.
+// Typically this string has the following format (including a trailing space):
+//
+//	chunkname:currentline:
+//
+// Level 0 is the running function,
+// level 1 is the function that called the running function, etc.
+//
+// This function is used to build a prefix for error messages.
+func Where(l *State, level int) string {
+	ar := l.Stack(level).Info("Sl")
+	if ar.CurrentLine <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d: ", ar.ShortSource, ar.CurrentLine)
+}
+
 // Subtable ensures that the value t[fname],
 // where t is the value at index idx, is a table,
 // and pushes that table onto the stack.

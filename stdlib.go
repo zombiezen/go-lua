@@ -223,7 +223,7 @@ func NewOpenMath(src rand.Source) Function {
 						return 0, err
 					}
 				default:
-					return 0, fmt.Errorf("wrong number of arguments")
+					return 0, fmt.Errorf("%swrong number of arguments", Where(l, 1))
 				}
 
 				if lo > hi {

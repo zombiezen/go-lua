@@ -72,8 +72,23 @@ func unwrapError(err error) error {
 // of the Go function that called it,
 // using a standard message that includes msg as a comment.
 func NewArgError(l *State, arg int, msg string) error {
-	// TODO(soon): Use debug information.
-	return fmt.Errorf("bad argument #%d (%s)", arg, msg)
+	ar := l.Stack(0).Info("n")
+	if ar == nil {
+		// No stack frame.
+		return fmt.Errorf("%sbad argument #%d (%s)", Where(l, 1), arg, msg)
+	}
+	if ar.NameWhat == "method" {
+		arg-- // do not count 'self'
+		if arg == 0 {
+			// Error is in the self argument itself.
+			return fmt.Errorf("%scalling '%s' on bad self (%s)", Where(l, 1), ar.Name, msg)
+		}
+	}
+	if ar.Name == "" {
+		// TODO(someday): Find global function.
+		ar.Name = "?"
+	}
+	return fmt.Errorf("%sbad argument #%d to '%s' (%s)", Where(l, 1), arg, ar.Name, msg)
 }
 
 // NewTypeError returns a new type error for the argument arg
