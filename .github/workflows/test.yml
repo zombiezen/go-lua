@@ -39,21 +39,21 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Install Nix
-        uses: cachix/install-nix-action@v22
       - name: Check out code
         uses: actions/checkout@v3
+      - name: Install Nix
+        uses: cachix/install-nix-action@v22
       - name: Run tests
         run: nix flake check --print-build-logs
   windows:
     name: go test (Windows)
     runs-on: windows-2022
     steps:
+      - name: Check out code
+        uses: actions/checkout@v3
       - name: Install Go
         uses: actions/setup-go@v4.0.0
         with:
           go-version: "1.21.1"
-      - name: Check out code
-        uses: actions/checkout@v3
       - name: Run tests
         run: go test -mod=readonly -race -v ./...
