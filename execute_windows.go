@@ -38,12 +38,12 @@ func osCommand(command string) *exec.Cmd {
 func execError(err error) (result string, status int) {
 	var e *exec.ExitError
 	if !errors.As(err, &e) {
-		return false, "exit", -1
+		return "exit", -1
 	}
 	if w, ok := e.Sys().(syscall.WaitStatus); ok && w.Signaled() {
 		return "signal", int(w.Signal())
 	}
-	return false, "exit", e.ExitCode()
+	return "exit", e.ExitCode()
 }
 
 func hasShell() bool {
