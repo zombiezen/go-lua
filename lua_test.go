@@ -74,6 +74,40 @@ func TestLoadString(t *testing.T) {
 	}
 }
 
+func TestDump(t *testing.T) {
+	state := new(State)
+	defer func() {
+		if err := state.Close(); err != nil {
+			t.Error("Close:", err)
+		}
+	}()
+
+	const source = "return 2 + 2"
+	if err := state.LoadString(source, source, "t"); err != nil {
+		t.Fatal(err)
+	}
+	compiledChunk := new(strings.Builder)
+	n, err := state.Dump(compiledChunk, false)
+	if wantN := int64(compiledChunk.Len()); n != wantN || err != nil {
+		t.Errorf("state.Dump(...) = %d, %v; want %d, <nil>", n, err, wantN)
+	}
+	state.Pop(1)
+
+	if err := state.LoadString(compiledChunk.String(), "=(load)", "b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Call(0, 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	if !state.IsNumber(-1) {
+		t.Fatalf("top of stack is %v; want number", state.Type(-1))
+	}
+	const want = int64(4)
+	if got, ok := state.ToInteger(-1); got != want || !ok {
+		t.Errorf("state.ToInteger(-1) = %d, %t; want %d, true", got, ok, want)
+	}
+}
+
 func TestPushGoValue(t *testing.T) {
 	tests := []struct {
 		name string

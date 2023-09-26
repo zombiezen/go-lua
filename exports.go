@@ -22,6 +22,7 @@
 package lua
 
 import (
+	"io"
 	"runtime/cgo"
 	"unsafe"
 )
@@ -40,6 +41,25 @@ func zombiezen_lua_readercb(l *C.lua_State, data unsafe.Pointer, size *C.size_t)
 	n, _ := r.r.Read(buf)
 	*size = C.size_t(n)
 	return r.buf
+}
+
+type writerState struct {
+	w   cgo.Handle
+	n   int64
+	err cgo.Handle
+}
+
+//export zombiezen_lua_writercb
+func zombiezen_lua_writercb(l *C.lua_State, p unsafe.Pointer, size C.size_t, ud unsafe.Pointer) C.int {
+	state := (*writerState)(ud)
+	b := unsafe.Slice((*byte)(p), size)
+	n, err := state.w.Value().(io.Writer).Write(b)
+	state.n += int64(n)
+	if err != nil {
+		state.err = cgo.NewHandle(err)
+		return 1
+	}
+	return 0
 }
 
 //export zombiezen_lua_gocb

@@ -41,6 +41,7 @@ import (
 // #include "lualib.h"
 //
 // char *zombiezen_lua_readercb(lua_State *L, void *data, size_t *size);
+// int zombiezen_lua_writercb(lua_State *L, const void *p, size_t size, void *ud);
 // int zombiezen_lua_gocb(lua_State *L);
 // int zombiezen_lua_gchandle(lua_State *L);
 //
@@ -1341,6 +1342,32 @@ func loadMode(mode string) (*C.char, error) {
 	default:
 		return nil, fmt.Errorf("unknown load mode %q", mode)
 	}
+}
+
+// Dump dumps a function as a binary chunk to the given writer.
+// Receives a Lua function on the top of the stack and produces a binary chunk that,
+// if loaded again, results in a function equivalent to the one dumped.
+// If strip is true, the binary representation may not include all debug information about the function, to save space.
+// Dump does not pop the Lua function from the stack.
+// Returns the number of bytes written and the first error that occurred.
+func (l *State) Dump(w io.Writer, strip bool) (int64, error) {
+	l.checkElems(1)
+	state := &writerState{w: cgo.NewHandle(w)}
+	defer state.w.Delete()
+	stripInt := C.int(0)
+	if strip {
+		stripInt = 1
+	}
+	ret := C.lua_dump(l.ptr, C.lua_Writer(C.zombiezen_lua_writercb), unsafe.Pointer(state), stripInt)
+	var err error
+	switch {
+	case state.err != 0:
+		err = fmt.Errorf("lua: dump function: %w", state.err.Value().(error))
+		state.err.Delete()
+	case ret != 0:
+		err = fmt.Errorf("lua: dump function: not a function")
+	}
+	return state.n, err
 }
 
 // Next pops a key from the stack,
