@@ -97,7 +97,7 @@ func osTempName() (string, error) {
 // OpenLibrary loads the standard os library.
 // This method is intended to be used as an argument to [Require].
 func (lib *OSLibrary) OpenLibrary(l *State) (int, error) {
-	funcs := map[string]Function{
+	err := NewLib(l, map[string]Function{
 		"date":     lib.date,
 		"difftime": lib.difftime,
 		"execute":  lib.execute,
@@ -106,14 +106,10 @@ func (lib *OSLibrary) OpenLibrary(l *State) (int, error) {
 		"rename":   lib.rename,
 		"time":     lib.time,
 		"tmpname":  lib.tmpname,
+	})
+	if err != nil {
+		return 0, err
 	}
-
-	l.CreateTable(0, len(funcs))
-	for name, f := range funcs {
-		l.PushClosure(0, f)
-		l.RawSetField(-2, name)
-	}
-
 	return 1, nil
 }
 

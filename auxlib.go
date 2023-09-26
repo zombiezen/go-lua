@@ -22,6 +22,7 @@
 package lua
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -186,6 +187,30 @@ func SetMetatable(l *State, tname string) {
 	l.SetMetatable(-2)
 }
 
+// TestUserdata reports if the object at the given index
+// is a userdata of the type tname (see [NewMetatable]).
+func TestUserdata(l *State, idx int, tname string) bool {
+	if !l.IsUserdata(idx) {
+		return false
+	}
+	if !l.Metatable(idx) {
+		return false
+	}
+	Metatable(l, tname)
+	ok := l.RawEqual(-1, -2)
+	l.Pop(2)
+	return ok
+}
+
+// CheckUserdata returns an error if the function argument arg
+// is not a userdata of the type tname (see [NewMetatable]).
+func CheckUserdata(l *State, arg int, tname string) error {
+	if !TestUserdata(l, arg, tname) {
+		return NewTypeError(l, arg, tname)
+	}
+	return nil
+}
+
 // Where returns a string identifying the current position of the control
 // at the given level in the call stack.
 // Typically this string has the following format (including a trailing space):
@@ -202,6 +227,44 @@ func Where(l *State, level int) string {
 		return ""
 	}
 	return fmt.Sprintf("%s:%d: ", ar.ShortSource, ar.CurrentLine)
+}
+
+// NewLib creates a new table and registers there the functions in the map reg.
+func NewLib(l *State, reg map[string]Function) error {
+	l.CreateTable(0, len(reg))
+	return SetFuncs(l, 0, reg)
+}
+
+// SetFuncs registers all functions the map reg
+// into the table on the top of the stack
+// (below optional upvalues, see next).
+// Any nils are registered as false.
+//
+// When nUp is not zero, all functions are created with nup upvalues,
+// initialized with copies of the nUp values previously pushed on the stack
+// on top of the library table.
+// These values are popped from the stack after the registration.
+func SetFuncs(l *State, nUp int, reg map[string]Function) error {
+	if !l.CheckStack(nUp) {
+		l.Pop(nUp)
+		return errors.New("too many upvalues")
+	}
+	for name, f := range reg {
+		if f == nil {
+			l.PushBoolean(false)
+		} else {
+			for i := 0; i < nUp; i++ {
+				l.PushValue(-nUp)
+			}
+			l.PushClosure(nUp, f)
+		}
+		if err := l.SetField(-(nUp + 2), name, 0); err != nil {
+			l.Pop(nUp + 1)
+			return err
+		}
+	}
+	l.Pop(nUp)
+	return nil
 }
 
 // Subtable ensures that the value t[fname],

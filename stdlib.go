@@ -40,7 +40,7 @@ func OpenLibraries(l *State) error {
 		{GName, NewOpenBase(nil, nil)},
 		{CoroutineLibraryName, OpenCoroutine},
 		{TableLibraryName, OpenTable},
-		// TODO(soon): {IOLibraryName, NewOpenIO},
+		{IOLibraryName, NewIOLibrary().OpenLibrary},
 		{OSLibraryName, NewOSLibrary().OpenLibrary},
 		{StringLibraryName, OpenString},
 		{UTF8LibraryName, OpenUTF8},
