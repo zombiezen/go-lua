@@ -97,7 +97,9 @@ func osTempName() (string, error) {
 // OpenLibrary loads the standard os library.
 // This method is intended to be used as an argument to [Require].
 func (lib *OSLibrary) OpenLibrary(l *State) (int, error) {
+	clock := lib.newClock()
 	err := NewLib(l, map[string]Function{
+		"clock":    clock,
 		"date":     lib.date,
 		"difftime": lib.difftime,
 		"execute":  lib.execute,
@@ -111,6 +113,35 @@ func (lib *OSLibrary) OpenLibrary(l *State) (int, error) {
 		return 0, err
 	}
 	return 1, nil
+}
+
+// newClock returns a [Function] that reports the wall clock time
+// since newClock was called.
+//
+// The original Lua os.clock function uses the C clock function,
+// which reports the CPU time in seconds.
+// I am unclear the intent of the os.clock function,
+// but at least [on Windows], C clock returns wall clock time.
+// Therefore, using wall clock (possibly monotonic) time seems reasonable to me.
+//
+// [on Windows]: https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/clock?view=msvc-170
+func (lib *OSLibrary) newClock() Function {
+	var openTime time.Time
+	if lib.Now == nil {
+		openTime = time.Now()
+	} else {
+		openTime = lib.Now()
+	}
+	return func(l *State) (int, error) {
+		var d time.Duration
+		if lib.Now == nil {
+			d = time.Since(openTime)
+		} else {
+			d = lib.Now().Sub(openTime)
+		}
+		l.PushNumber(d.Seconds())
+		return 1, nil
+	}
 }
 
 func (lib *OSLibrary) date(l *State) (int, error) {
