@@ -22,32 +22,58 @@
 package lua
 
 import (
+	"errors"
+	"io"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func TestLoad(t *testing.T) {
-	state := new(State)
-	defer func() {
-		if err := state.Close(); err != nil {
-			t.Error("Close:", err)
-		}
-	}()
+	t.Run("Success", func(t *testing.T) {
+		state := new(State)
+		defer func() {
+			if err := state.Close(); err != nil {
+				t.Error("Close:", err)
+			}
+		}()
 
-	const source = "return 2 + 2"
-	if err := state.Load(strings.NewReader(source), source, "t"); err != nil {
-		t.Fatal(err)
-	}
-	if err := state.Call(0, 1, 0); err != nil {
-		t.Fatal(err)
-	}
-	if !state.IsNumber(-1) {
-		t.Fatalf("top of stack is %v; want number", state.Type(-1))
-	}
-	const want = int64(4)
-	if got, ok := state.ToInteger(-1); got != want || !ok {
-		t.Errorf("state.ToInteger(-1) = %d, %t; want %d, true", got, ok, want)
-	}
+		const source = "return 2 + 2"
+		if err := state.Load(strings.NewReader(source), source, "t"); err != nil {
+			t.Fatal(err)
+		}
+		if err := state.Call(0, 1, 0); err != nil {
+			t.Fatal(err)
+		}
+		if !state.IsNumber(-1) {
+			t.Fatalf("top of stack is %v; want number", state.Type(-1))
+		}
+		const want = int64(4)
+		if got, ok := state.ToInteger(-1); got != want || !ok {
+			t.Errorf("state.ToInteger(-1) = %d, %t; want %d, true", got, ok, want)
+		}
+	})
+
+	t.Run("ReadError", func(t *testing.T) {
+		state := new(State)
+		defer func() {
+			if err := state.Close(); err != nil {
+				t.Error("Close:", err)
+			}
+		}()
+
+		const message = "bork"
+		r := io.MultiReader(strings.NewReader("return"), iotest.ErrReader(errors.New(message)))
+		err := state.Load(r, "=(reader)", "t")
+		if err == nil {
+			t.Error("state.Load(...) = <nil>; want error")
+		} else if got := err.Error(); !strings.Contains(got, message) {
+			t.Errorf("state.Load(...) = %v; want to contain %q", got, message)
+		}
+		if got, ok := state.ToString(-1); !strings.Contains(got, message) || !ok {
+			t.Errorf("state.ToString(-1) = %q, %t; want to contain %q", got, ok, message)
+		}
+	})
 }
 
 func TestLoadString(t *testing.T) {

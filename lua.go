@@ -57,6 +57,14 @@ import (
 //   lua_pushlstring(L, _GoStringPtr(s), _GoStringLen(s));
 // }
 //
+// const char *zombiezen_lua_reader(lua_State *L, void *data, size_t *size) {
+//   const char *p = zombiezen_lua_readercb(L, data, size);
+//   if (p == NULL) {
+//     lua_error(L);
+//   }
+//   return p;
+// }
+//
 // struct readStringData {
 //   _GoString_ s;
 //   int done;
@@ -1289,7 +1297,7 @@ func (l *State) Load(r io.Reader, chunkName string, mode string) error {
 	chunkNameC := C.CString(chunkName)
 	defer C.free(unsafe.Pointer(chunkNameC))
 
-	ret := C.lua_load(l.ptr, C.lua_Reader(C.zombiezen_lua_readercb), unsafe.Pointer(&handle), chunkNameC, modeC)
+	ret := C.lua_load(l.ptr, C.lua_Reader(C.zombiezen_lua_reader), unsafe.Pointer(&handle), chunkNameC, modeC)
 	l.top++
 	if ret != C.LUA_OK {
 		return fmt.Errorf("lua: load %s: %w", formatChunkName(chunkName), l.newError(ret))

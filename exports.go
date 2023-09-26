@@ -38,8 +38,14 @@ import "C"
 func zombiezen_lua_readercb(l *C.lua_State, data unsafe.Pointer, size *C.size_t) *C.char {
 	r := (*cgo.Handle)(data).Value().(*reader)
 	buf := unsafe.Slice((*byte)(unsafe.Pointer(r.buf)), readerBufferSize)
-	n, _ := r.r.Read(buf)
+	n, err := r.r.Read(buf)
 	*size = C.size_t(n)
+	if n == 0 && err != nil && err != io.EOF {
+		// We have a trampoline that intercepts a NULL return.
+		// Push the error onto the stack.
+		C.zombiezen_lua_pushstring(l, err.Error())
+		return nil
+	}
 	return r.buf
 }
 
