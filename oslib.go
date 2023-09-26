@@ -99,15 +99,16 @@ func osTempName() (string, error) {
 func (lib *OSLibrary) OpenLibrary(l *State) (int, error) {
 	clock := lib.newClock()
 	err := NewLib(l, map[string]Function{
-		"clock":    clock,
-		"date":     lib.date,
-		"difftime": lib.difftime,
-		"execute":  lib.execute,
-		"getenv":   lib.getenv,
-		"remove":   lib.remove,
-		"rename":   lib.rename,
-		"time":     lib.time,
-		"tmpname":  lib.tmpname,
+		"clock":     clock,
+		"date":      lib.date,
+		"difftime":  lib.difftime,
+		"execute":   lib.execute,
+		"getenv":    lib.getenv,
+		"remove":    lib.remove,
+		"rename":    lib.rename,
+		"setlocale": lib.setlocale,
+		"time":      lib.time,
+		"tmpname":   lib.tmpname,
 	})
 	if err != nil {
 		return 0, err
@@ -279,6 +280,11 @@ func (lib *OSLibrary) execute(l *State) (int, error) {
 	l.PushString(result)
 	l.PushInteger(int64(status))
 	return 3, nil
+}
+
+func (lib *OSLibrary) setlocale(l *State) (int, error) {
+	pushFail(l)
+	return 1, nil
 }
 
 func (lib *OSLibrary) time(l *State) (int, error) {
