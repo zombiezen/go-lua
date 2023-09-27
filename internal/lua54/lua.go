@@ -1770,3 +1770,34 @@ func UpvalueIndex(i int) int {
 	}
 	return C.LUA_REGISTRYINDEX - (i + 1)
 }
+
+type luaError struct {
+	code C.int
+	msg  string
+}
+
+func (l *State) newError(code C.int) error {
+	e := &luaError{code: code}
+	e.msg, _ = l.ToString(-1)
+	return e
+}
+
+func (e *luaError) Error() string {
+	if e.msg != "" {
+		return e.msg
+	}
+	switch e.code {
+	case C.LUA_ERRRUN:
+		return "runtime error"
+	case C.LUA_ERRMEM:
+		return "memory allocation error"
+	case C.LUA_ERRERR:
+		return "error while running message handler"
+	case C.LUA_ERRSYNTAX:
+		return "syntax error"
+	case C.LUA_YIELD:
+		return "coroutine yield"
+	default:
+		return "unknown error"
+	}
+}

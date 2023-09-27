@@ -25,8 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-
-	"zombiezen.com/go/lua/internal/lua54"
 )
 
 // Metafield pushes onto the stack the field event
@@ -68,7 +66,7 @@ func CallMeta(l *State, obj int, event string) (bool, error) {
 	l.PushValue(obj)
 	if err := l.Call(1, 1, 0); err != nil {
 		l.Pop(1)
-		return true, fmt.Errorf("lua: call metafield %q: %w", event, lua54.UnwrapError(err))
+		return true, fmt.Errorf("lua: call metafield %q: %w", event, err)
 	}
 	return true, nil
 }
