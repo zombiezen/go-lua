@@ -1,4 +1,4 @@
-# Hacking on `zombiezen.com/go/lua`
+# C Lua source
 
 ## Updating
 

@@ -25,6 +25,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"zombiezen.com/go/lua/internal/lua54"
 )
 
 // Metafield pushes onto the stack the field event
@@ -66,7 +68,7 @@ func CallMeta(l *State, obj int, event string) (bool, error) {
 	l.PushValue(obj)
 	if err := l.Call(1, 1, 0); err != nil {
 		l.Pop(1)
-		return true, fmt.Errorf("lua: call metafield %q: %w", event, unwrapError(err))
+		return true, fmt.Errorf("lua: call metafield %q: %w", event, lua54.UnwrapError(err))
 	}
 	return true, nil
 }
@@ -327,4 +329,42 @@ func Require(l *State, modName string, global bool, openf Function) error {
 		}
 	}
 	return nil
+}
+
+// NewArgError returns a new error reporting a problem with argument arg
+// of the Go function that called it,
+// using a standard message that includes msg as a comment.
+func NewArgError(l *State, arg int, msg string) error {
+	ar := l.Stack(0).Info("n")
+	if ar == nil {
+		// No stack frame.
+		return fmt.Errorf("%sbad argument #%d (%s)", Where(l, 1), arg, msg)
+	}
+	if ar.NameWhat == "method" {
+		arg-- // do not count 'self'
+		if arg == 0 {
+			// Error is in the self argument itself.
+			return fmt.Errorf("%scalling '%s' on bad self (%s)", Where(l, 1), ar.Name, msg)
+		}
+	}
+	if ar.Name == "" {
+		// TODO(someday): Find global function.
+		ar.Name = "?"
+	}
+	return fmt.Errorf("%sbad argument #%d to '%s' (%s)", Where(l, 1), arg, ar.Name, msg)
+}
+
+// NewTypeError returns a new type error for the argument arg
+// of the Go function that called it, using a standard message;
+// tname is a "name" for the expected type.
+func NewTypeError(l *State, arg int, tname string) error {
+	var typeArg string
+	if Metafield(l, arg, "__name") == TypeString {
+		typeArg, _ = l.ToString(-1)
+	} else if tp := l.Type(arg); tp == TypeLightUserdata {
+		typeArg = "light userdata"
+	} else {
+		typeArg = tp.String()
+	}
+	return NewArgError(l, arg, fmt.Sprintf("%s expected, got %s", tname, typeArg))
 }

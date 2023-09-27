@@ -169,7 +169,7 @@ func (lib *IOLibrary) OpenLibrary(l *State) (int, error) {
 	return 1, nil
 }
 
-const streamMetatableName = "zombiezen.com/go/lua.*stream"
+const streamMetatableName = "*zombiezen.com/go/lua.stream"
 
 func (lib *IOLibrary) createMetatable(l *State) error {
 	NewMetatable(l, streamMetatableName)

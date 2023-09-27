@@ -19,7 +19,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-package lua
+package lua54
 
 import (
 	"io"

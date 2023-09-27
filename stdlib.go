@@ -28,6 +28,8 @@ import (
 	"io"
 	"math/rand"
 	"os"
+
+	"zombiezen.com/go/lua/internal/lua54"
 )
 
 // OpenLibraries opens all standard Lua libraries into the given state
@@ -71,7 +73,7 @@ func NewOpenBase(out io.Writer, loadfile Function) Function {
 	return func(l *State) (int, error) {
 		// Call stock luaopen_base.
 		nArgs := l.Top()
-		pushOpenBase(l)
+		lua54.PushOpenBase(l)
 		l.Rotate(1, 1)
 		if err := l.Call(nArgs, 1, 0); err != nil {
 			return 0, err
@@ -131,7 +133,7 @@ func NewOpenBase(out io.Writer, loadfile Function) Function {
 // This function is intended to be used as an argument to [Require].
 func OpenCoroutine(l *State) (int, error) {
 	nArgs := l.Top()
-	pushOpenCoroutine(l)
+	lua54.PushOpenCoroutine(l)
 	l.Rotate(1, 1)
 	if err := l.Call(nArgs, MultipleReturns, 0); err != nil {
 		return 0, err
@@ -143,7 +145,7 @@ func OpenCoroutine(l *State) (int, error) {
 // This function is intended to be used as an argument to [Require].
 func OpenTable(l *State) (int, error) {
 	nArgs := l.Top()
-	pushOpenTable(l)
+	lua54.PushOpenTable(l)
 	l.Rotate(1, 1)
 	if err := l.Call(nArgs, MultipleReturns, 0); err != nil {
 		return 0, err
@@ -155,7 +157,7 @@ func OpenTable(l *State) (int, error) {
 // This function is intended to be used as an argument to [Require].
 func OpenString(l *State) (int, error) {
 	nArgs := l.Top()
-	pushOpenString(l)
+	lua54.PushOpenString(l)
 	l.Rotate(1, 1)
 	if err := l.Call(nArgs, MultipleReturns, 0); err != nil {
 		return 0, err
@@ -167,7 +169,7 @@ func OpenString(l *State) (int, error) {
 // This function is intended to be used as an argument to [Require].
 func OpenUTF8(l *State) (int, error) {
 	nArgs := l.Top()
-	pushOpenUTF8(l)
+	lua54.PushOpenUTF8(l)
 	l.Rotate(1, 1)
 	if err := l.Call(nArgs, MultipleReturns, 0); err != nil {
 		return 0, err
@@ -187,7 +189,7 @@ func NewOpenMath(src rand.Source) Function {
 	return func(l *State) (int, error) {
 		// Call stock luaopen_math.
 		nArgs := l.Top()
-		pushOpenMath(l)
+		lua54.PushOpenMath(l)
 		l.Rotate(1, 1)
 		if err := l.Call(nArgs, 1, 0); err != nil {
 			return 0, err
@@ -275,7 +277,7 @@ func NewOpenMath(src rand.Source) Function {
 // This function is intended to be used as an argument to [Require].
 func OpenDebug(l *State) (int, error) {
 	nArgs := l.Top()
-	pushOpenDebug(l)
+	lua54.PushOpenDebug(l)
 	l.Rotate(1, 1)
 	if err := l.Call(nArgs, MultipleReturns, 0); err != nil {
 		return 0, err
@@ -287,7 +289,7 @@ func OpenDebug(l *State) (int, error) {
 // This function is intended to be used as an argument to [Require].
 func OpenPackage(l *State) (int, error) {
 	nArgs := l.Top()
-	pushOpenPackage(l)
+	lua54.PushOpenPackage(l)
 	l.Rotate(1, 1)
 	if err := l.Call(nArgs, MultipleReturns, 0); err != nil {
 		return 0, err

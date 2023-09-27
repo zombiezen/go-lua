@@ -1,6 +1,6 @@
 # `zombiezen.com/go/lua`
 
-This is [Lua](https://www.lua.org/) 5.4.6, released on 2023-05-02, wrapped as a Go package.
+This is [Lua 5.4.6](https://www.lua.org/versions.html#5.4), wrapped as a Go package.
 
 It's experimental and suited to fit my needs.
 
@@ -19,7 +19,7 @@ import "zombiezen.com/go/lua"
 // and make the standard libraries available.
 state := new(lua.State)
 defer state.Close()
-if err := lua.OpenLibraries(state, os.Stdout); err != nil {
+if err := lua.OpenLibraries(state); err != nil {
   return err
 }
 
