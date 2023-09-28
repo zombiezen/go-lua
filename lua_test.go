@@ -27,6 +27,9 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+	"unsafe"
+
+	"zombiezen.com/go/lua/internal/lua54"
 )
 
 func TestLoad(t *testing.T) {
@@ -309,6 +312,23 @@ func TestPushClosure(t *testing.T) {
 			t.Errorf("function returned %s; want %d", value, want)
 		}
 	})
+}
+
+// TestStateRepresentation ensures that State has the same memory representation
+// as lua54.State.
+// This is critical for the correct functioning of [State.PushClosure],
+// which avoids allocating a new closure by using a func(*State) (int, error)
+// as a func(*lua54.State) (int, error).
+func TestStateRepresentation(t *testing.T) {
+	if got, want := unsafe.Offsetof(State{}.state), uintptr(0); got != want {
+		t.Errorf("unsafe.Offsetof(State{}.state) = %d; want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(State{}), unsafe.Sizeof(lua54.State{}); got != want {
+		t.Errorf("unsafe.Sizeof(State{}) = %d; want %d", got, want)
+	}
+	if got, want := unsafe.Alignof(State{}), unsafe.Alignof(lua54.State{}); got%want != 0 {
+		t.Errorf("unsafe.Alignof(State{}) = %d; want %d", got, want)
+	}
 }
 
 func BenchmarkExec(b *testing.B) {

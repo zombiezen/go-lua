@@ -25,6 +25,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"zombiezen.com/go/lua/internal/lua54"
 )
 
 // Metafield pushes onto the stack the field event
@@ -158,17 +160,7 @@ func CheckInteger(l *State, arg int) (int64, error) {
 // Regardless, the function pushes onto the stack
 // the final value associated with tname in the registry.
 func NewMetatable(l *State, tname string) bool {
-	if Metatable(l, tname) != TypeNil {
-		// Name already in use.
-		return false
-	}
-	l.Pop(1)
-	l.CreateTable(0, 2)
-	l.PushString(tname)
-	l.RawSetField(-2, "__name") // metatable.__name = tname
-	l.PushValue(-1)
-	l.RawSetField(RegistryIndex, tname)
-	return true
+	return lua54.NewMetatable(&l.state, tname)
 }
 
 // Metatable pushes onto the stack the metatable associated with the name tname
@@ -176,7 +168,7 @@ func NewMetatable(l *State, tname string) bool {
 // or nil if there is no metatable associated with that name.
 // Returns the type of the pushed value.
 func Metatable(l *State, tname string) Type {
-	return l.RawField(RegistryIndex, tname)
+	return Type(lua54.Metatable(&l.state, tname))
 }
 
 // SetMetatable sets the metatable of the object on the top of the stack

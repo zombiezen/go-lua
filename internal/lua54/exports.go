@@ -27,6 +27,11 @@ import (
 	"unsafe"
 )
 
+// This file is used to contain Go code exported to C.
+// It's kept in a separate file with a minimal C preamble
+// to avoid unintentional redefinitions.
+// See the caveat in https://pkg.go.dev/cmd/cgo for more details.
+
 // #include <stdlib.h>
 // #include <stddef.h>
 // #include "lua.h"
@@ -87,7 +92,7 @@ func zombiezen_lua_gocb(l *C.lua_State) C.int {
 		return -1
 	}
 
-	results, err := f.pcall(state)
+	results, err := pcall(f, state)
 	if err != nil {
 		C.zombiezen_lua_pushstring(l, err.Error())
 		return -1
