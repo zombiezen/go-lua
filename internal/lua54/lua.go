@@ -329,6 +329,10 @@ func (l *State) Remove(idx int) {
 	l.Pop(1)
 }
 
+func (l *State) Insert(idx int) {
+	l.Rotate(idx, 1)
+}
+
 func (l *State) Copy(fromIdx, toIdx int) {
 	l.init()
 	if !l.isAcceptableIndex(fromIdx) || !l.isAcceptableIndex(toIdx) {
@@ -1318,4 +1322,23 @@ func (e *luaError) Error() string {
 	default:
 		return "unknown error"
 	}
+}
+
+const (
+	ErrRun    int = C.LUA_ERRRUN
+	ErrMem    int = C.LUA_ERRMEM
+	ErrErr    int = C.LUA_ERRERR
+	ErrSyntax int = C.LUA_ERRSYNTAX
+	Yield     int = C.LUA_YIELD
+)
+
+func AsError(err error) (code int, ok bool) {
+	if err == nil {
+		return C.LUA_OK, true
+	}
+	var e *luaError
+	if !errors.As(err, &e) {
+		return 0, false
+	}
+	return int(e.code), true
 }

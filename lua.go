@@ -164,11 +164,17 @@ func (l *State) PushValue(idx int) {
 // The elements are rotated n positions in the direction of the top, for a positive n,
 // or -n positions in the direction of the bottom, for a negative n.
 // If the absolute value of n is greater than the size of the slice being rotated,
+// or if idx is a pseudo-index,
 // Rotate panics.
-// This function cannot be called with a pseudo-index,
-// because a pseudo-index is not an actual stack position.
 func (l *State) Rotate(idx, n int) {
 	l.state.Rotate(idx, n)
+}
+
+// Insert moves the top element into the given valid index,
+// shifting up the elements above this index to open space.
+// If idx is a pseudo-index, Insert panics.
+func (l *State) Insert(idx int) {
+	l.state.Insert(idx)
 }
 
 // Remove removes the element at the given valid index,
@@ -864,3 +870,27 @@ const (
 	DebugLibraryName     = lua54.DebugLibraryName
 	PackageLibraryName   = lua54.PackageLibraryName
 )
+
+// IsOutOfMemory reports whether the error indicates a memory allocation error.
+func IsOutOfMemory(err error) bool {
+	code, ok := lua54.AsError(err)
+	return ok && code == lua54.ErrMem
+}
+
+// IsHandlerError reports whether the error indicates an error while running the message handler.
+func IsHandlerError(err error) bool {
+	code, ok := lua54.AsError(err)
+	return ok && code == lua54.ErrErr
+}
+
+// IsSyntax reports whether the error indicates a Lua syntax error.
+func IsSyntax(err error) bool {
+	code, ok := lua54.AsError(err)
+	return ok && code == lua54.ErrSyntax
+}
+
+// IsYield reports whether the error indicates a coroutine yield.
+func IsYield(err error) bool {
+	code, ok := lua54.AsError(err)
+	return ok && code == lua54.Yield
+}
