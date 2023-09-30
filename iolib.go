@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -60,16 +61,28 @@ type IOLibrary struct {
 	// CreateTemp returns a handle for a temporary file opened in update mode.
 	// The returned file should clean up the file on Close.
 	CreateTemp func() (ReadWriteSeekCloser, error)
+
+	// OpenProcessReader starts a subprocess
+	// and returns a handle for reading its standard output.
+	// If nil, io.popen(command, "r") will return an error.
+	OpenProcessReader func(command string) (io.ReadCloser, error)
+
+	// OpenProcessWriter starts a subprocess
+	// and returns a handle for writing to its standard input.
+	// If nil, io.popen(command, "w") will return an error.
+	OpenProcessWriter func(command string) (io.WriteCloser, error)
 }
 
 // NewIOLibrary returns an OSLibrary that uses the native operating system.
 func NewIOLibrary() *IOLibrary {
 	return &IOLibrary{
-		Stdin:      bufio.NewReader(os.Stdin),
-		Stdout:     os.Stdout,
-		Stderr:     os.Stderr,
-		Open:       ioOpen,
-		CreateTemp: ioCreateTemp,
+		Stdin:             bufio.NewReader(os.Stdin),
+		Stdout:            os.Stdout,
+		Stderr:            os.Stderr,
+		Open:              ioOpen,
+		CreateTemp:        ioCreateTemp,
+		OpenProcessReader: popenRead,
+		OpenProcessWriter: popenWrite,
 	}
 }
 
@@ -121,6 +134,34 @@ func ioCreateTemp() (ReadWriteSeekCloser, error) {
 	return &removeOnCloseFile{f, fullPath}, nil
 }
 
+func popenRead(command string) (io.ReadCloser, error) {
+	c := osCommand(command)
+	c.Stdin = os.Stdin
+	c.Stderr = os.Stderr
+	stdout, err := c.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Start(); err != nil {
+		return nil, err
+	}
+	return &popenReader{stdout, c}, nil
+}
+
+func popenWrite(command string) (io.WriteCloser, error) {
+	c := osCommand(command)
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	stdin, err := c.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Start(); err != nil {
+		return nil, err
+	}
+	return &popenWriter{stdin, c}, nil
+}
+
 // OpenLibrary loads the standard io library.
 // This method is intended to be used as an argument to [Require].
 func (lib *IOLibrary) OpenLibrary(l *State) (int, error) {
@@ -131,6 +172,7 @@ func (lib *IOLibrary) OpenLibrary(l *State) (int, error) {
 		"lines":   lib.lines,
 		"open":    lib.open,
 		"output":  lib.output,
+		"popen":   lib.popen,
 		"read":    lib.read,
 		"stderr":  nil,
 		"stdin":   nil,
@@ -290,6 +332,47 @@ func (lib *IOLibrary) filefunc(l *State, f, mode string) (int, error) {
 	return 1, nil
 }
 
+func (lib *IOLibrary) popen(l *State) (int, error) {
+	command, err := CheckString(l, 1)
+	if err != nil {
+		return 0, err
+	}
+	const modeArg = 2
+	mode := "r"
+	if !l.IsNoneOrNil(modeArg) {
+		mode, err = CheckString(l, modeArg)
+		if err != nil {
+			return 0, err
+		}
+	}
+	switch mode {
+	case "r":
+		if lib.OpenProcessReader == nil {
+			err := fmt.Errorf("popen %s: %w", command, errors.ErrUnsupported)
+			return pushFileResult(l, err), nil
+		}
+		r, err := lib.OpenProcessReader(command)
+		if err != nil {
+			return pushFileResult(l, err), nil
+		}
+		pushStream(l, newStream(r, true, false, false))
+		return 1, nil
+	case "w":
+		if lib.OpenProcessWriter == nil {
+			err := fmt.Errorf("popen %s: %w", command, errors.ErrUnsupported)
+			return pushFileResult(l, err), nil
+		}
+		w, err := lib.OpenProcessWriter(command)
+		if err != nil {
+			return pushFileResult(l, err), nil
+		}
+		pushStream(l, newStream(w, false, true, false))
+		return 1, nil
+	default:
+		return 0, NewArgError(l, modeArg, "invalid mode")
+	}
+}
+
 func (lib *IOLibrary) read(l *State) (int, error) {
 	s, err := registryStream(l, ioInput)
 	if err != nil {
@@ -419,4 +502,40 @@ func (f *removeOnCloseFile) Close() error {
 		return err1
 	}
 	return err2
+}
+
+type popenReader struct {
+	pipe io.ReadCloser
+	cmd  *exec.Cmd
+}
+
+func (p *popenReader) Read(b []byte) (int, error) {
+	return p.pipe.Read(b)
+}
+
+func (p *popenReader) Close() error {
+	err1 := p.pipe.Close()
+	err2 := p.cmd.Wait()
+	if err2 != nil {
+		return err2
+	}
+	return err1
+}
+
+type popenWriter struct {
+	pipe io.WriteCloser
+	cmd  *exec.Cmd
+}
+
+func (p *popenWriter) Write(b []byte) (int, error) {
+	return p.pipe.Write(b)
+}
+
+func (p *popenWriter) Close() error {
+	err1 := p.pipe.Close()
+	err2 := p.cmd.Wait()
+	if err2 != nil {
+		return err2
+	}
+	return err1
 }

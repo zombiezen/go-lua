@@ -25,61 +25,119 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestIOLibrary(t *testing.T) {
-	lib := NewIOLibrary()
-	lib.Stdin = strings.NewReader("")
-	lib.Stdout = io.Discard
-	lib.Stderr = io.Discard
+	t.Run("Files", func(t *testing.T) {
+		lib := NewIOLibrary()
+		lib.Stdin = nil
+		lib.Stdout = nil
+		lib.Stderr = nil
+		lib.OpenProcessReader = nil
+		lib.OpenProcessWriter = nil
 
-	dir := t.TempDir()
-	origOpen := lib.Open
-	lib.Open = func(name, mode string) (io.Closer, error) {
-		cleaned := filepath.Clean(name)
-		if cleaned == "." || cleaned == ".." || strings.ContainsRune(cleaned, filepath.Separator) {
-			return nil, &os.PathError{
-				Op:   "open",
-				Path: name,
-				Err:  os.ErrNotExist,
+		dir := t.TempDir()
+		origOpen := lib.Open
+		lib.Open = func(name, mode string) (io.Closer, error) {
+			cleaned := filepath.Clean(name)
+			if cleaned == "." || cleaned == ".." || strings.ContainsRune(cleaned, filepath.Separator) {
+				return nil, &os.PathError{
+					Op:   "open",
+					Path: name,
+					Err:  os.ErrNotExist,
+				}
 			}
+			f, err := origOpen(filepath.Join(dir, cleaned), mode)
+			if e, ok := err.(*os.PathError); ok {
+				e.Path = name
+			}
+			return f, err
 		}
-		f, err := origOpen(filepath.Join(dir, cleaned), mode)
-		if e, ok := err.(*os.PathError); ok {
-			e.Path = name
-		}
-		return f, err
-	}
 
-	state := new(State)
-	defer func() {
-		if err := state.Close(); err != nil {
-			t.Error("Close:", err)
+		state := new(State)
+		defer func() {
+			if err := state.Close(); err != nil {
+				t.Error("Close:", err)
+			}
+		}()
+		out := new(strings.Builder)
+		openBase := NewOpenBase(out, nil)
+		if err := Require(state, GName, true, openBase); err != nil {
+			t.Error(err)
 		}
-	}()
-	out := new(strings.Builder)
-	openBase := NewOpenBase(out, nil)
-	if err := Require(state, GName, true, openBase); err != nil {
-		t.Error(err)
-	}
-	if err := Require(state, IOLibraryName, true, lib.OpenLibrary); err != nil {
-		t.Error(err)
-	}
-	f, err := os.Open(filepath.Join("testdata", "iolib.lua"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if err := state.Load(f, "@testdata/iolib.lua", "t"); err != nil {
-		t.Fatal(err)
-	}
-	err = state.Call(0, 0, 0)
-	if out.Len() > 0 {
-		t.Log(out.String())
-	}
-	if err != nil {
-		t.Error(err)
-	}
+		if err := Require(state, IOLibraryName, true, lib.OpenLibrary); err != nil {
+			t.Error(err)
+		}
+
+		f, err := os.Open(filepath.Join("testdata", "iolib.lua"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err := state.Load(f, "@testdata/iolib.lua", "t"); err != nil {
+			t.Fatal(err)
+		}
+		err = state.Call(0, 0, 0)
+		if out.Len() > 0 {
+			t.Log(out.String())
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	})
+
+	t.Run("Popen", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Not running popen test on Windows")
+		}
+		wd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			os.Chdir(wd)
+		})
+
+		lib := NewIOLibrary()
+		lib.Stdin = nil
+		lib.Stdout = nil
+		lib.Stderr = nil
+
+		state := new(State)
+		defer func() {
+			if err := state.Close(); err != nil {
+				t.Error("Close:", err)
+			}
+		}()
+		out := new(strings.Builder)
+		openBase := NewOpenBase(out, nil)
+		if err := Require(state, GName, true, openBase); err != nil {
+			t.Error(err)
+		}
+		if err := Require(state, IOLibraryName, true, lib.OpenLibrary); err != nil {
+			t.Error(err)
+		}
+
+		f, err := os.Open(filepath.Join("testdata", "popen_unix.lua"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if err := state.Load(f, "@testdata/popen_unix.lua", "t"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir(t.TempDir()); err != nil {
+			t.Fatal(err)
+		}
+		err = state.Call(0, 0, 0)
+		if out.Len() > 0 {
+			t.Log(out.String())
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	})
 }
