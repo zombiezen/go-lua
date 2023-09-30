@@ -267,20 +267,11 @@ func (b *ReadWriter) Seek(offset int64, whence int) (int64, error) {
 // It returns the number of bytes written from p
 // and any error encountered that caused the write to stop early.
 func (b *ReadWriter) Write(p []byte) (n int, err error) {
-	// TODO(now): Debugging
-	pos, err := b.r.rd.Seek(0, io.SeekCurrent)
-	_, _ = pos, err
-
 	if len(p) == 0 {
 		return 0, nil
 	}
-
-	if b.r.Buffered() > 0 {
-		// Set I/O offset to logical position.
-		_, err := b.r.rd.Seek(-int64(b.r.Buffered()), io.SeekCurrent)
-		if err != nil {
-			return 0, fmt.Errorf("bufseek: seek for write: %w", err)
-		}
+	if err := b.syncWritePosition(); err != nil {
+		return 0, err
 	}
 
 	n, err = b.w.Write(p)
@@ -288,8 +279,34 @@ func (b *ReadWriter) Write(p []byte) (n int, err error) {
 	// Files opened for appending make the final position hard to predict,
 	// so we just clear the position and recompute it as needed.
 	b.r.clear(-1)
-
 	return n, err
+}
+
+// WriteString writes data from s.
+// It returns the number of bytes written from s
+// and any error encountered that caused the write to stop early.
+func (b *ReadWriter) WriteString(s string) (n int, err error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+	if err := b.syncWritePosition(); err != nil {
+		return 0, err
+	}
+
+	n, err = io.WriteString(b.w, s)
+	// Same note as in Write.
+	b.r.clear(-1)
+	return n, err
+}
+
+func (b *ReadWriter) syncWritePosition() error {
+	if b.r.Buffered() > 0 {
+		_, err := b.r.rd.Seek(-int64(b.r.Buffered()), io.SeekCurrent)
+		if err != nil {
+			return fmt.Errorf("bufseek: seek for write: %w", err)
+		}
+	}
+	return nil
 }
 
 var errNegativeRead = errors.New("bufseek: reader returned negative count from Read")
