@@ -126,6 +126,7 @@ func ioCreateTemp() (ReadWriteSeekCloser, error) {
 func (lib *IOLibrary) OpenLibrary(l *State) (int, error) {
 	err := NewLib(l, map[string]Function{
 		"close":   lib.close,
+		"flush":   lib.flush,
 		"input":   lib.input,
 		"lines":   lib.lines,
 		"open":    lib.open,
@@ -164,6 +165,14 @@ func (lib *IOLibrary) OpenLibrary(l *State) (int, error) {
 	l.RawSetField(-2, "stderr")
 
 	return 1, nil
+}
+
+func (lib *IOLibrary) flush(l *State) (int, error) {
+	if _, err := registryStream(l, ioOutput); err != nil {
+		return 0, err
+	}
+	l.Insert(1)
+	return fflush(l)
 }
 
 func (lib *IOLibrary) type_(l *State) (int, error) {
