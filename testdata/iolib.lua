@@ -19,16 +19,44 @@
 --
 -- SPDX-License-Identifier: MIT
 
-local f = assert(io.open("foo.txt", "w"))
-local wresult = assert(f:write("Hello, ", 42, "!\n"))
-assert(wresult == f, "write result is "..tostring(wresult))
-wresult = assert(f:write("second line\n"))
-assert(wresult == f, "write result is "..tostring(wresult))
-assert(f:close())
+-- Writing
+do
+  local f = assert(io.open("foo.txt", "w"))
+  local wresult = assert(f:write("Hello, ", 42, "!\n"))
+  assert(wresult == f, "write result is "..tostring(wresult))
+  wresult = assert(f:write("second line\n"))
+  assert(wresult == f, "write result is "..tostring(wresult))
+  assert(f:close())
+end
 
-f = assert(io.open("foo.txt"))
-local line1 = assert(f:read())
-assert(line1 == "Hello, 42!")
-local rest = assert(f:read("a"))
-assert(rest == "second line\n")
-assert(f:close())
+-- Reading
+local lines = {
+  "Hello, 42!",
+  "second line",
+}
+do
+  local f = assert(io.open("foo.txt"))
+  local line1 = assert(f:read())
+  assert(line1 == lines[1])
+  local rest = assert(f:read("a"))
+  assert(rest == lines[2].."\n")
+  assert(f:close())
+end
+
+-- Seeking
+do
+  local f = assert(io.open("foo.txt", "r+"))
+  local firstBytes = assert(f:read(2))
+  assert(firstBytes == "He")
+  local pos = assert(f:seek("cur", #lines[1] + 1 - #firstBytes))
+  assert(pos == (#lines[1] + 1))
+  lines[2] = "this is a very long line"
+  assert(f:write(lines[2].."\n"))
+  pos = assert(f:seek("set"))
+  assert(pos == 0)
+  local result = assert(f:read("a"))
+  local want = lines[1].."\n"..lines[2].."\n"
+  assert(result == want)
+  pos = assert(f:seek("cur"))
+  assert(pos == #want)
+end
