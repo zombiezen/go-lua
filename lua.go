@@ -45,6 +45,28 @@ import (
 	"zombiezen.com/go/lua/internal/lua54"
 )
 
+// Version number.
+const (
+	VersionMajor   = lua54.VersionMajor
+	VersionMinor   = lua54.VersionMinor
+	VersionRelease = lua54.VersionRelease
+
+	VersionNum        = lua54.VersionNum
+	VersionReleaseNum = lua54.VersionReleaseNum
+)
+
+// Version strings.
+const (
+	// Version is the version string without the final "release" number.
+	Version = lua54.Version
+	// Release is the full version string.
+	Release = lua54.Release
+	// Copyright is the full version string with a copyright notice.
+	Copyright = lua54.Copyright
+	// Authors is a string listing the authors of Lua.
+	Authors = lua54.Copyright
+)
+
 // RegistryIndex is a pseudo-index to the [registry],
 // a predefined table that can be used by any Go or C code
 // to store whatever Lua values it needs to store.

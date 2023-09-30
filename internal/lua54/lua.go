@@ -122,6 +122,20 @@ import (
 // }
 import "C"
 
+const (
+	VersionMajor   = C.LUA_VERSION_MAJOR
+	VersionMinor   = C.LUA_VERSION_MINOR
+	VersionRelease = C.LUA_VERSION_RELEASE
+
+	VersionNum        = C.LUA_VERSION_NUM
+	VersionReleaseNum = C.LUA_VERSION_RELEASE_NUM
+
+	Version   = C.LUA_VERSION
+	Release   = C.LUA_RELEASE
+	Copyright = C.LUA_COPYRIGHT
+	Authors   = C.LUA_AUTHORS
+)
+
 const RegistryIndex int = C.LUA_REGISTRYINDEX
 
 const (
