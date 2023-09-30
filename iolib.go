@@ -127,6 +127,7 @@ func (lib *IOLibrary) OpenLibrary(l *State) (int, error) {
 	err := NewLib(l, map[string]Function{
 		"close":   lib.close,
 		"input":   lib.input,
+		"lines":   lib.lines,
 		"open":    lib.open,
 		"output":  lib.output,
 		"read":    lib.read,
@@ -294,6 +295,41 @@ func (lib *IOLibrary) write(l *State) (int, error) {
 		return 0, err
 	}
 	return s.write(l, 1)
+}
+
+func (lib *IOLibrary) lines(l *State) (int, error) {
+	if l.IsNone(1) {
+		l.PushNil()
+	}
+	toClose := false
+	if l.IsNil(1) {
+		if _, err := registryStream(l, ioInput); err != nil {
+			return 0, err
+		}
+		l.Replace(1)
+	} else {
+		filename, err := CheckString(l, 1)
+		if err != nil {
+			return 0, err
+		}
+		s, err := lib.doOpen(filename, "r")
+		if err != nil {
+			return 0, fmt.Errorf("%s%w", Where(l, 1), err)
+		}
+		pushStream(l, s)
+		l.Replace(1)
+		toClose = true
+	}
+	if err := pushLinesFunction(l, toClose); err != nil {
+		return 0, err
+	}
+	if toClose {
+		l.PushNil()    // state
+		l.PushNil()    // control
+		l.PushValue(1) // file as to-be-closed variable
+		return 4, nil
+	}
+	return 1, nil
 }
 
 // ReadWriteSeekCloser is an interface

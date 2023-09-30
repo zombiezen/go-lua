@@ -43,6 +43,16 @@ do
   assert(f:close())
 end
 
+-- Lines
+do
+  local i = 1
+  for line in io.lines("foo.txt") do
+    assert(i <= #lines, "Too many lines")
+    assert(lines[i] == line, "line "..i..": "..line)
+    i = i + 1
+  end
+end
+
 -- Seeking
 do
   local f = assert(io.open("foo.txt", "r+"))

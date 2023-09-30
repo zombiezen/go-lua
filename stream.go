@@ -97,6 +97,7 @@ func createStreamMetatable(l *State) error {
 		"__tostring": ftostring,
 	})
 	if err != nil {
+		l.Pop(1)
 		return err
 	}
 
@@ -105,12 +106,16 @@ func createStreamMetatable(l *State) error {
 	l.RawSetField(-2, "__close")
 
 	err = NewLib(l, map[string]Function{
-		"close": fclose,
-		"read":  fread,
-		"seek":  fseek,
-		"write": fwrite,
+		"close":   fclose,
+		"flush":   fflush,
+		"lines":   flines,
+		"read":    fread,
+		"seek":    fseek,
+		"setvbuf": fsetvbuf,
+		"write":   fwrite,
 	})
 	if err != nil {
+		l.Pop(1)
 		return err
 	}
 	l.RawSetField(-2, "__index") // metatable.__index = method table
@@ -215,6 +220,26 @@ func fseek(l *State) (int, error) {
 		return pushFileResult(l, err), nil
 	}
 	l.PushInteger(pos)
+	return 1, nil
+}
+
+func flines(l *State) (int, error) {
+	if _, err := toStream(l); err != nil {
+		return 0, err
+	}
+	if err := pushLinesFunction(l, false); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
+func fflush(l *State) (int, error) {
+	l.PushBoolean(true)
+	return 1, nil
+}
+
+func fsetvbuf(l *State) (int, error) {
+	pushFail(l)
 	return 1, nil
 }
 
@@ -467,6 +492,59 @@ func (s *stream) write(l *State, arg int) (int, error) {
 	}
 	// File handle already on stack top.
 	return 1, nil
+}
+
+// pushLinesFunction pushes the result of the file:lines method onto the stack
+// after popping its arguments.
+// It assumes that the first item on the stack is the stream handle,
+// and the remaining items on the stack are the arguments to pass to file:read.
+func pushLinesFunction(l *State, toClose bool) error {
+	nArgs := l.Top() - 1
+	const maxArgs = 250
+	if nArgs >= maxArgs {
+		return NewArgError(l, maxArgs+2, "too many arguments")
+	}
+	l.PushValue(1)
+	l.PushClosure(nArgs+1, func(l *State) (int, error) {
+		l.UserValue(UpvalueIndex(1), 1)
+		s, _ := l.ToGoValue(-1).(*stream)
+		l.Pop(1)
+		if s == nil {
+			return 0, fmt.Errorf("%sinvalid stream upvalue", Where(l, 1))
+		}
+		if s.isClosed() {
+			return 0, fmt.Errorf("%sfile is already closed", Where(l, 1))
+		}
+		l.SetTop(1)
+		if !l.CheckStack(nArgs) {
+			return 0, fmt.Errorf("%stoo many arguments", Where(l, 1))
+		}
+		for i := 1; i <= nArgs; i++ {
+			l.PushValue(UpvalueIndex(1 + i))
+		}
+		nResults, err := s.read(l, 2)
+		if err != nil {
+			return 0, err
+		}
+		if !l.ToBoolean(-nResults) {
+			// EOF or error without reading anything.
+			if nResults > 1 {
+				// Has error information (not an EOF).
+				msg, _ := l.ToString(-nResults + 1)
+				return 0, fmt.Errorf("%s%s", Where(l, 1), msg)
+			}
+			if toClose {
+				l.SetTop(0)
+				l.PushValue(UpvalueIndex(1))
+				if _, err := fclose(l); err != nil {
+					return 0, err
+				}
+			}
+			return 0, nil
+		}
+		return nResults, nil
+	})
+	return nil
 }
 
 func (s *stream) isClosed() bool {
