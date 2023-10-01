@@ -28,6 +28,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,14 +36,12 @@ import (
 	"zombiezen.com/go/lua"
 )
 
-const programName = "zombiezen-lua"
-
 func main() {
 	programName := "zombiezen-lua"
 	if len(os.Args) > 0 && os.Args[0] != "" {
 		programName = filepath.Base(os.Args[0])
 	}
-	err := run()
+	err := run(programName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
 	}
@@ -51,9 +50,22 @@ func main() {
 	}
 }
 
-func run() error {
+func run(programName string) error {
+	var exprArgs []exprArg
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: %s [options] [script [args]]\n", programName)
+		flag.PrintDefaults()
+	}
+	flag.Var(exprArgFlag{'e', &exprArgs}, "e", "execute string '`stat`'")
+	flag.Var(exprArgFlag{'l', &exprArgs}, "l", "for `g=mod`, require library 'mod' into global 'g'")
+	interactive := flag.Bool("i", false, "enter interactive mode after executing 'script'")
+	showVersion := flag.Bool("v", false, "show version information")
 	noEnv := flag.Bool("E", false, "ignore environment variables")
 	flag.Parse()
+
+	if *showVersion || *interactive {
+		fmt.Println(lua.Copyright)
+	}
 
 	l := new(lua.State)
 	if *noEnv {
@@ -63,10 +75,11 @@ func run() error {
 	if err := lua.OpenLibraries(l); err != nil {
 		return err
 	}
+
 	var script int
 	if len(os.Args) == 0 {
 		script = -1
-	} else if flag.NArg() == len(os.Args)-1 {
+	} else if flag.NArg() == 0 {
 		script = 0
 	} else {
 		script = len(os.Args) - flag.NArg()
@@ -74,7 +87,48 @@ func run() error {
 	if err := createArgTable(l, os.Args, script); err != nil {
 		return err
 	}
-	return doREPL(l)
+
+	if !*noEnv {
+		if err := handleInit(l); err != nil {
+			return err
+		}
+	}
+	for _, arg := range exprArgs {
+		switch arg.c {
+		case 'e':
+			if err := doString(l, arg.val, "=(command line)"); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			}
+		case 'l':
+			if err := doLibrary(l, arg.val); err != nil {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", programName, err)
+			}
+		default:
+			panic("unreachable")
+		}
+	}
+	if flag.NArg() > 0 {
+		if err := handleScript(l, flag.Args()); err != nil {
+			return err
+		}
+	}
+	if *interactive {
+		return doREPL(l)
+	}
+	hasE := false
+	for _, arg := range exprArgs {
+		if arg.c == 'e' {
+			hasE = true
+			break
+		}
+	}
+	if flag.NArg() == 0 && !*showVersion && !hasE {
+		// No active option.
+		// TODO(someday): Check whether stdin is a tty.
+		fmt.Println(lua.Copyright)
+		return doREPL(l)
+	}
+	return nil
 }
 
 func doREPL(l *lua.State) error {
@@ -117,12 +171,119 @@ func print(l *lua.State, errPrefix string) {
 	}
 }
 
+func handleInit(l *lua.State) error {
+	name := fmt.Sprintf("=LUA_INIT_%s_%s", lua.VersionMajor, lua.VersionMinor)
+	init, ok := os.LookupEnv(name[1:])
+	if !ok {
+		name = "=LUA_INIT"
+		init, ok = os.LookupEnv(name[1:])
+		if !ok {
+			return nil
+		}
+	}
+	if filename, ok := strings.CutPrefix(init, "@"); ok {
+		return doFile(l, filename)
+	}
+	return doString(l, init, name)
+}
+
+func handleScript(l *lua.State, args []string) error {
+	var r io.ReadCloser
+	name := args[0]
+	if name == "-" {
+		r = io.NopCloser(os.Stdin)
+		name = "=stdin"
+	} else {
+		var err error
+		r, err = os.Open(name)
+		if err != nil {
+			return err
+		}
+		name = "@" + name
+	}
+	err := l.Load(r, name, "bt")
+	r.Close()
+	if err != nil {
+		return err
+	}
+
+	nArgs, err := pushArgs(l)
+	if err != nil {
+		return err
+	}
+	return doCall(l, nArgs, 0)
+}
+
+func pushArgs(l *lua.State) (int, error) {
+	if tp, err := l.Global("arg", 0); err != nil {
+		return 0, err
+	} else if tp != lua.TypeTable {
+		return 0, fmt.Errorf("'arg' (%v) is not a table", tp)
+	}
+	argIndex := l.AbsIndex(-1)
+	n, err := lua.Len(l, argIndex)
+	if err != nil {
+		return 0, err
+	}
+	if n > math.MaxInt || !l.CheckStack(int(n)+3) {
+		return 0, fmt.Errorf("too many arguments (%d) to script", n)
+	}
+	for i := int64(1); i <= n; i++ {
+		l.RawIndex(argIndex, i)
+	}
+	l.Remove(argIndex)
+	return int(n), nil
+}
+
+func doLibrary(l *lua.State, globname string) error {
+	globname, modname, ok := strings.Cut(globname, "=")
+	if !ok {
+		modname = globname
+	}
+	if _, err := l.Global("require", 0); err != nil {
+		return err
+	}
+	l.PushString(modname)
+	if err := doCall(l, 1, 1); err != nil {
+		return err
+	}
+	if err := l.SetGlobal(globname, 0); err != nil {
+		return err
+	}
+	return nil
+}
+
+func doString(l *lua.State, s string, chunkName string) error {
+	if err := l.LoadString(s, chunkName, "t"); err != nil {
+		l.Pop(1)
+		return err
+	}
+	return doCall(l, 0, 0)
+}
+
+func doFile(l *lua.State, name string) error {
+	f, err := os.Open(name)
+	if err != nil {
+		return err
+	}
+	err = l.Load(f, "@"+name, "bt")
+	f.Close()
+	if err != nil {
+		l.Pop(1)
+		return err
+	}
+	return doCall(l, 0, 0)
+}
+
 func doCall(l *lua.State, nArgs, nResults int) error {
 	base := l.Top() - nArgs
 	l.PushClosure(0, msgHandler)
 	l.Insert(base)
 	// TODO(someday): Catch signals.
 	err := l.Call(nArgs, nResults, base)
+	if err != nil {
+		l.Pop(1)
+	}
 	l.Remove(base)
 	return err
 }
@@ -254,4 +415,46 @@ func isIncomplete(err error) bool {
 		return false
 	}
 	return lua.IsSyntax(err) && strings.Contains(err.Error(), "<eof>")
+}
+
+type exprArg struct {
+	c   byte
+	val string
+}
+
+type exprArgFlag struct {
+	c     byte
+	slice *[]exprArg
+}
+
+func (f exprArgFlag) String() string {
+	if f.slice == nil {
+		return ""
+	}
+	first := true
+	sb := new(strings.Builder)
+	for _, arg := range *f.slice {
+		if arg.c != f.c {
+			continue
+		}
+		if first {
+			first = false
+		} else {
+			sb.WriteString(",")
+		}
+		sb.WriteString(arg.val)
+	}
+	return sb.String()
+}
+
+func (f exprArgFlag) Set(s string) error {
+	*f.slice = append(*f.slice, exprArg{
+		c:   f.c,
+		val: s,
+	})
+	return nil
+}
+
+func (f exprArgFlag) Get() any {
+	return *f.slice
 }

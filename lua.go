@@ -47,10 +47,6 @@ import (
 
 // Version number.
 const (
-	VersionMajor   = lua54.VersionMajor
-	VersionMinor   = lua54.VersionMinor
-	VersionRelease = lua54.VersionRelease
-
 	VersionNum        = lua54.VersionNum
 	VersionReleaseNum = lua54.VersionReleaseNum
 )
@@ -65,6 +61,10 @@ const (
 	Copyright = lua54.Copyright
 	// Authors is a string listing the authors of Lua.
 	Authors = lua54.Copyright
+
+	VersionMajor   = lua54.VersionMajor
+	VersionMinor   = lua54.VersionMinor
+	VersionRelease = lua54.VersionRelease
 )
 
 // RegistryIndex is a pseudo-index to the [registry],
