@@ -4,7 +4,7 @@
     flake-utils.url = "flake-utils";
   };
 
-  outputs = { nixpkgs, flake-utils, ... }:
+  outputs = { self, nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -12,44 +12,23 @@
           buildGoModule = pkgs.buildGo121Module;
         };
       in {
-        checks.goTest =
-          let
-            inherit (pkgs) nix-gitignore;
+        checks.package = self.packages.${system}.default;
 
-            root = ./.;
-            patterns = [
-              "*.nix"
-              "/.github/"
-              ".vscode/"
-              "result"
-              "result-*"
-            ];
-            src = builtins.path {
-              name = "go-lua-source";
-              path = root;
-              filter = nix-gitignore.gitignoreFilterPure (_: _: true) patterns root;
-            };
-
-            args = {
-              inherit src;
-              buildInputs = [ pkgs.go_1_21 ];
-            };
-          in pkgs.runCommandCC "go-lua-test" args ''
-            cd "$src"
-            export GOCACHE="$TMPDIR/gocache"
-            export GOMODCACHE="$TMPDIR/gomod"
-            go test -v -mod=readonly -race ./...
-            touch $out
-          '';
+        packages.default = pkgs.callPackage ./package.nix {
+          buildGoModule = pkgs.buildGo121Module;
+        };
 
         devShells.default = pkgs.mkShell {
           packages = [
             pkgs.delve
             pkgs.go-tools
-            pkgs.go_1_21
             pkgs.gotools
 
             gopls
+          ];
+
+          inputsFrom = [
+            self.packages.${system}.default
           ];
 
           # For Delve + cgo
