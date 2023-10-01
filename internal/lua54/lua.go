@@ -120,6 +120,15 @@ import (
 // static void pushlightuserdata(lua_State *L, uint64_t p) {
 //   lua_pushlightuserdata(L, (void *)p);
 // }
+//
+// static int lencb(lua_State *L) {
+//   lua_len(L, 1);
+//   return 1;
+// }
+//
+// static void pushlenfunction(lua_State *L) {
+//   lua_pushcfunction(L, lencb);
+// }
 import "C"
 
 const (
@@ -1005,6 +1014,19 @@ func (l *State) Next(idx int) bool {
 		l.top--
 	}
 	return ok
+}
+
+func (l *State) Len(idx int, msgHandler int) error {
+	l.init()
+	idx = l.AbsIndex(idx)
+	msgHandler = l.checkMessageHandler(msgHandler)
+	C.pushlenfunction(l.ptr)
+	l.top++
+	l.PushValue(idx)
+	if err := l.Call(1, 1, msgHandler); err != nil {
+		return fmt.Errorf("lua: length: %w", err)
+	}
+	return nil
 }
 
 func (l *State) Stack(level int) *ActivationRecord {

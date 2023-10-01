@@ -23,6 +23,29 @@ package lua
 
 import "testing"
 
+func TestLen(t *testing.T) {
+	state := new(State)
+	defer func() {
+		if err := state.Close(); err != nil {
+			t.Error("Close:", err)
+		}
+	}()
+	want := []float64{123, 456, 789}
+	state.CreateTable(len(want), 0)
+	for i, n := range want {
+		state.PushNumber(n)
+		state.RawSetIndex(-2, int64(1+i))
+	}
+
+	got, err := Len(state, -1)
+	if got != int64(len(want)) || err != nil {
+		t.Errorf("Len(...) = %d, %v; want %d, <nil>", got, err, len(want))
+	}
+	if got, want := state.Top(), 1; got != want {
+		t.Errorf("Top() = %d; want %d", got, want)
+	}
+}
+
 func TestWhere(t *testing.T) {
 	state := new(State)
 	defer func() {

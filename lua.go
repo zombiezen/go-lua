@@ -778,6 +778,31 @@ func (l *State) Next(idx int) bool {
 	return l.state.Next(idx)
 }
 
+// Len pushes the length of the value at the given index to the stack.
+// It is equivalent to the ['#' operator in Lua]
+// and may trigger a [metamethod] for the "length" event.
+//
+// If there is any error, Len catches it,
+// pushes a single value on the stack (the error object),
+// and returns an error.
+//
+// If msgHandler is 0,
+// then the error object returned on the stack is exactly the original error object.
+// Otherwise, msgHandler is the stack index of a message handler.
+// (This index cannot be a pseudo-index.)
+// In case of runtime errors, this handler will be called with the error object
+// and its return value will be the object returned on the stack by Len.
+// Typically, the message handler is used to add more debug information to the error object,
+// such as a stack traceback.
+// Such information cannot be gathered after the return of Len,
+// since by then the stack has unwound.
+//
+// ['#' operator in Lua]: https://www.lua.org/manual/5.4/manual.html#3.4.7
+// [metamethod]: https://www.lua.org/manual/5.4/manual.html#2.4
+func (l *State) Len(idx, msgHandler int) error {
+	return l.state.Len(idx, msgHandler)
+}
+
 // Stack returns an identifier of the activation record
 // of the function executing at the given level.
 // Level 0 is the current running function,

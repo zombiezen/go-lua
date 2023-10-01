@@ -221,6 +221,21 @@ func Where(l *State, level int) string {
 	return fmt.Sprintf("%s:%d: ", ar.ShortSource, ar.CurrentLine)
 }
 
+// Len returns the "length" of the value at the given index as an integer.
+// It is similar to
+func Len(l *State, idx int) (int64, error) {
+	if err := l.Len(idx, 0); err != nil {
+		l.Pop(1)
+		return 0, err
+	}
+	n, ok := l.ToInteger(-1)
+	l.Pop(1)
+	if !ok {
+		return 0, fmt.Errorf("lua: length: not an integer")
+	}
+	return n, nil
+}
+
 // NewLib creates a new table and registers there the functions in the map reg.
 func NewLib(l *State, reg map[string]Function) error {
 	l.CreateTable(0, len(reg))
