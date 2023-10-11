@@ -348,6 +348,13 @@ func (l *State) RawLen(idx int) uint64 {
 	return l.state.RawLen(idx)
 }
 
+// CopyUserdata copies bytes from the userdata's block of bytes
+// to dst if the value at the given index is a full userdata.
+// It returns the number of bytes copied.
+func (l *State) CopyUserdata(dst []byte, idx, start int) int {
+	return l.state.CopyUserdata(dst, idx, start)
+}
+
 // ToGoValue converts the Lua value at the given index to a Go value.
 // The Lua value must be a userdata previously created by [State.PushGoValue];
 // otherwise the function returns nil.
@@ -558,11 +565,21 @@ func (l *State) CreateTable(nArr, nRec int) {
 }
 
 // NewUserdataUV creates and pushes on the stack a new full userdata,
-// with nUValue associated Lua values, called user values.
-// These values can be accessed or modified
+// with nUValue associated Lua values, called user values,
+// plus an associated block of size bytes.
+// The user values can be accessed or modified
 // using [State.UserValue] and [State.SetUserValue] respectively.
-func (l *State) NewUserdataUV(nUValue int) {
-	l.state.NewUserdataUV(nUValue)
+// The block of bytes can be set and read
+// using [State.SetUserdata] and [State.CopyUserdata] respectively.
+func (l *State) NewUserdataUV(size, nUValue int) {
+	l.state.NewUserdataUV(size, nUValue)
+}
+
+// SetUserdata copies the bytes from src to the userdata's block of bytes,
+// starting at the given start byte position.
+// SetUserdata panics if start+len(src) is greater than the size of the userdata's block of bytes.
+func (l *State) SetUserdata(idx int, start int, src []byte) {
+	l.state.SetUserdata(idx, 0, src)
 }
 
 // Metatable reports whether the value at the given index has a metatable

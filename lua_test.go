@@ -185,7 +185,7 @@ func TestInvalidToGoValue(t *testing.T) {
 		}
 	}()
 
-	state.NewUserdataUV(0)
+	state.NewUserdataUV(0, 0)
 	if got := state.ToGoValue(1); got != nil {
 		t.Errorf("state.ToGoValue(1) = %#v; want <nil>", got)
 	}
@@ -199,21 +199,37 @@ func TestFullUserdata(t *testing.T) {
 		}
 	}()
 
-	const want = 42
-	state.NewUserdataUV(1)
-	state.PushInteger(want)
+	state.NewUserdataUV(4, 1)
+	if got, want := state.RawLen(-1), uint64(4); got != want {
+		t.Errorf("state.RawLen(-1) = %d; want %d", got, want)
+	}
+	var gotBlock [4]byte
+	if got, want := state.CopyUserdata(gotBlock[:], -1, 0), 4; got != want {
+		t.Errorf("CopyUserdata(...) = %d; want %d", got, want)
+	} else if want := ([4]byte{}); gotBlock != want {
+		t.Errorf("after init, block = %v; want %v", gotBlock, want)
+	}
+	state.SetUserdata(-1, 0, []byte{0xde, 0xad, 0xbe, 0xef})
+	if got, want := state.CopyUserdata(gotBlock[:], -1, 0), 4; got != want {
+		t.Errorf("CopyUserdata(...) = %d; want %d", got, want)
+	} else if want := ([4]byte{0xde, 0xad, 0xbe, 0xef}); gotBlock != want {
+		t.Errorf("after init, block = %v; want %v", gotBlock, want)
+	}
+
+	const wantUserValue = 42
+	state.PushInteger(wantUserValue)
 	if !state.SetUserValue(-2, 1) {
 		t.Error("Userdata does not have value 1")
 	}
 	if got, want := state.UserValue(-1, 1), TypeNumber; got != want {
 		t.Errorf("user value 1 type = %v; want %v", got, want)
 	}
-	if got, ok := state.ToInteger(-1); got != want || !ok {
+	if got, ok := state.ToInteger(-1); got != wantUserValue || !ok {
 		value, err := ToString(state, -1)
 		if err != nil {
 			value = "<unknown value>"
 		}
-		t.Errorf("user value 1 = %s; want %d", value, want)
+		t.Errorf("user value 1 = %s; want %d", value, wantUserValue)
 	}
 	state.Pop(1)
 

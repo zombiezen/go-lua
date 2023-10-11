@@ -79,7 +79,7 @@ func PushFile(l *State, f ReadWriteSeekCloser) error {
 }
 
 func pushStream(l *State, s *stream) {
-	l.NewUserdataUV(1)
+	l.NewUserdataUV(0, 1)
 	l.PushGoValue(s)
 	l.SetUserValue(-2, 1)
 	SetMetatable(l, streamMetatableName)

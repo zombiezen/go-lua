@@ -35,6 +35,7 @@ import (
 // #include <stdlib.h>
 // #include <stddef.h>
 // #include <stdint.h>
+// #include <string.h>
 // #include "lua.h"
 // #include "lauxlib.h"
 // #include "lualib.h"
@@ -128,6 +129,19 @@ import (
 //
 // static void pushlenfunction(lua_State *L) {
 //   lua_pushcfunction(L, lencb);
+// }
+//
+// static void *newuserdata(lua_State *L, size_t size, int nuvalue) {
+//   void *ptr = lua_newuserdatauv(L, size, nuvalue);
+//   memset(ptr, 0, size);
+//   return ptr;
+// }
+//
+// static size_t userdatalen(lua_State *L, int index) {
+//   if (lua_type(L, index) != LUA_TUSERDATA) {
+//     return 0;
+//   }
+//   return (size_t)lua_rawlen(L, index);
 // }
 import "C"
 
@@ -512,6 +526,24 @@ func (l *State) RawLen(idx int) uint64 {
 	return uint64(C.lua_rawlen(l.ptr, C.int(idx)))
 }
 
+func (l *State) CopyUserdata(dst []byte, idx, start int) int {
+	if l.ptr == nil {
+		return 0
+	}
+	if !l.isAcceptableIndex(idx) {
+		panic("unacceptable index")
+	}
+	if start < 0 {
+		panic("negative userdata start")
+	}
+	size := int(C.userdatalen(l.ptr, C.int(idx)))
+	if start >= size {
+		return 0
+	}
+	src := unsafe.Slice((*byte)(C.lua_touserdata(l.ptr, C.int(idx))), size)
+	return copy(dst, src[start:])
+}
+
 func (l *State) ToGoValue(idx int) any {
 	if l.ptr == nil {
 		return nil
@@ -728,13 +760,35 @@ func (l *State) CreateTable(nArr, nRec int) {
 	l.top++
 }
 
-func (l *State) NewUserdataUV(nUValue int) {
+func (l *State) NewUserdataUV(size, nUValue int) {
 	l.init()
 	if l.top >= l.cap {
 		panic("stack overflow")
 	}
-	C.lua_newuserdatauv(l.ptr, 0, C.int(nUValue))
+	if size < 0 {
+		panic("negative userdata size")
+	}
+	C.newuserdata(l.ptr, C.size_t(size), C.int(nUValue))
 	l.top++
+}
+
+func (l *State) SetUserdata(idx int, start int, src []byte) {
+	if !l.isAcceptableIndex(idx) {
+		panic("unacceptable index")
+	}
+	if start < 0 {
+		panic("negative start")
+	}
+
+	size := int(C.userdatalen(l.ptr, C.int(idx)))
+	if start+len(src) > size {
+		panic("out of userdata bounds")
+	}
+	if len(src) == 0 {
+		return
+	}
+	dst := unsafe.Slice((*byte)(C.lua_touserdata(l.ptr, C.int(idx))), size)
+	copy(dst[start:], src)
 }
 
 func (l *State) Metatable(idx int) bool {
