@@ -43,7 +43,7 @@ import (
 // char *zombiezen_lua_readercb(lua_State *L, void *data, size_t *size);
 // int zombiezen_lua_writercb(lua_State *L, const void *p, size_t size, void *ud);
 // int zombiezen_lua_gocb(lua_State *L);
-// int zombiezen_lua_gchandle(lua_State *L);
+// int zombiezen_lua_gcfunc(lua_State *L);
 //
 // int zombiezen_lua_callback(lua_State *L) {
 //   int nresults = zombiezen_lua_gocb(L);
@@ -533,6 +533,10 @@ func (l *State) CopyUserdata(dst []byte, idx, start int) int {
 	if !l.isAcceptableIndex(idx) {
 		panic("unacceptable index")
 	}
+	return l.copyUserdata(dst, idx, start)
+}
+
+func (l *State) copyUserdata(dst []byte, idx, start int) int {
 	if start < 0 {
 		panic("negative userdata start")
 	}
@@ -542,20 +546,6 @@ func (l *State) CopyUserdata(dst []byte, idx, start int) int {
 	}
 	src := unsafe.Slice((*byte)(C.lua_touserdata(l.ptr, C.int(idx))), size)
 	return copy(dst, src[start:])
-}
-
-func (l *State) ToGoValue(idx int) any {
-	if l.ptr == nil {
-		return nil
-	}
-	if !l.isAcceptableIndex(idx) {
-		panic("unacceptable index")
-	}
-	handlePtr := l.testHandle(idx)
-	if handlePtr == nil || *handlePtr == 0 {
-		return nil
-	}
-	return handlePtr.Value()
 }
 
 func (l *State) ToPointer(idx int) uintptr {
@@ -636,15 +626,6 @@ func (l *State) PushLightUserdata(p uintptr) {
 	l.top++
 }
 
-func (l *State) PushGoValue(v any) {
-	if v == nil {
-		l.PushNil()
-	} else {
-		l.init()
-		l.pushHandle(cgo.NewHandle(v))
-	}
-}
-
 type Function = func(*State) (int, error)
 
 func pcall(f Function, l *State) (nResults int, err error) {
@@ -664,6 +645,8 @@ func pcall(f Function, l *State) (nResults int, err error) {
 	return f(l)
 }
 
+const functionMetatableName = "zombiezen.com/go/lua.Function"
+
 func (l *State) PushClosure(n int, f Function) {
 	if f == nil {
 		panic("nil Function")
@@ -671,14 +654,34 @@ func (l *State) PushClosure(n int, f Function) {
 	if n < 0 || n > 254 {
 		panic("invalid upvalue count")
 	}
-	l.init()
 	l.checkElems(n)
-	// pushHandle handles checking the stack.
-	l.pushHandle(cgo.NewHandle(f))
-	l.Rotate(-(n + 1), 1)
+	l.init()
+	if !l.CheckStack(3) {
+		panic("stack overflow")
+	}
+
+	// Create closure userdata (used as first upvalue).
+	l.NewUserdataUV(int(unsafe.Sizeof(uintptr(0))), 0)
+	if NewMetatable(l, functionMetatableName) {
+		l.populateFunctionMetatable()
+	}
+	l.SetMetatable(-2)
+	setUintptr(l, -1, uintptr(cgo.NewHandle(f)))
+	l.Insert(-1 - n)
+
 	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_callback), 1+C.int(n))
 	// lua_pushcclosure pops n+1, but pushes 1.
 	l.top -= n
+}
+
+func (l *State) populateFunctionMetatable() {
+	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_gcfunc), 0)
+	l.top++
+	l.RawSetField(-2, "__gc") // metatable.__gc = zombiezen_lua_gcfunc
+	// Prevent access of metatable from Lua.
+	// The basic library's getmetatable function obeys this metafield.
+	l.PushBoolean(false)
+	l.RawSetField(-2, "__metatable") // metatable.__metatable = false
 }
 
 func (l *State) Global(name string, msgHandler int) (Type, error) {
@@ -776,6 +779,10 @@ func (l *State) SetUserdata(idx int, start int, src []byte) {
 	if !l.isAcceptableIndex(idx) {
 		panic("unacceptable index")
 	}
+	l.setUserdata(idx, start, src)
+}
+
+func (l *State) setUserdata(idx int, start int, src []byte) {
 	if start < 0 {
 		panic("negative start")
 	}
@@ -1309,45 +1316,22 @@ func (r *reader) free() {
 	}
 }
 
-const handleMetatableName = "runtime/cgo.Handle"
-
-func (l *State) pushHandle(handle cgo.Handle) {
-	if !l.CheckStack(3) {
-		panic("stack overflow")
+func copyUintptr(l *State, idx int) uintptr {
+	var buf [unsafe.Sizeof(uintptr(0))]byte
+	l.copyUserdata(buf[:], idx, 0)
+	var x uintptr
+	for i, b := range buf {
+		x |= uintptr(b) << (i * 8)
 	}
-	ptr := (*cgo.Handle)(C.lua_newuserdatauv(l.ptr, C.size_t(unsafe.Sizeof(cgo.Handle(0))), 0))
-	*ptr = handle
-	l.top++
-	if NewMetatable(l, handleMetatableName) {
-		C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_gchandle), 0)
-		l.top++
-		l.RawSetField(-2, "__gc") // metatable.__gc = zombiezen_lua_gchandle
-		// Prevent access of metatable from Lua.
-		// The basic library's getmetatable function obeys this metafield.
-		l.PushBoolean(false)
-		l.RawSetField(-2, "__metatable") // metatable.__metatable = false
-	}
-	l.SetMetatable(-2)
+	return x
 }
 
-func (l *State) testHandle(idx int) *cgo.Handle {
-	p := C.lua_touserdata(l.ptr, C.int(idx))
-	if p == nil {
-		return nil
+func setUintptr(l *State, idx int, x uintptr) {
+	var buf [unsafe.Sizeof(uintptr(0))]byte
+	for i := range buf {
+		buf[i] = byte(x >> (i * 8))
 	}
-	if !l.metatable(idx) {
-		return nil
-	}
-	tp := Metatable(l, handleMetatableName)
-	// Since we lazily create the cgo.Handle metatable,
-	// we only want this to succeed if the metatable is not nil.
-	// Otherwise, this is an unknown pointer we would be dereferencing.
-	ok := tp == TypeTable && l.RawEqual(-1, -2)
-	l.Pop(2)
-	if !ok {
-		return nil
-	}
-	return (*cgo.Handle)(p)
+	l.setUserdata(idx, 0, buf[:])
 }
 
 // NewMetatable is the auxlib NewMetatable function.

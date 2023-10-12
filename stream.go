@@ -27,7 +27,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime/cgo"
 	"strings"
+	"unsafe"
 
 	"zombiezen.com/go/lua/internal/bufseek"
 )
@@ -79,10 +81,9 @@ func PushFile(l *State, f ReadWriteSeekCloser) error {
 }
 
 func pushStream(l *State, s *stream) {
-	l.NewUserdataUV(0, 1)
-	l.PushGoValue(s)
-	l.SetUserValue(-2, 1)
+	l.NewUserdataUV(int(unsafe.Sizeof(uintptr(0))), 1)
 	SetMetatable(l, streamMetatableName)
+	setUintptr(l, -1, uintptr(cgo.NewHandle(s)))
 }
 
 func createStreamMetatable(l *State) error {
@@ -91,10 +92,11 @@ func createStreamMetatable(l *State) error {
 		return nil
 	}
 	err := SetFuncs(l, 0, map[string]Function{
-		"__index":    nil,
-		"__gc":       fgc,
-		"__close":    nil,
-		"__tostring": ftostring,
+		"__index":     nil,
+		"__gc":        fgc,
+		"__close":     nil,
+		"__tostring":  ftostring,
+		"__metatable": nil, // prevent access to metatable
 	})
 	if err != nil {
 		l.Pop(1)
@@ -148,6 +150,7 @@ func fgc(l *State) (int, error) {
 		return 0, err
 	}
 	s.Close()
+	setUintptr(l, 1, 0)
 	return 0, nil
 }
 
@@ -249,11 +252,7 @@ func registryStream(l *State, findex string) (*stream, error) {
 	if _, err := l.Field(RegistryIndex, findex, 0); err != nil {
 		return nil, err
 	}
-	if err := CheckUserdata(l, -1, streamMetatableName); err != nil {
-		return nil, err
-	}
-	l.UserValue(-1, 1)
-	s, _ := l.ToGoValue(-1).(*stream)
+	s := testStream(l, -1)
 	if s == nil {
 		return nil, fmt.Errorf("could not extract stream from registry %q", findex)
 	}
@@ -262,16 +261,23 @@ func registryStream(l *State, findex string) (*stream, error) {
 
 func toStream(l *State) (*stream, error) {
 	const idx = 1
-	if err := CheckUserdata(l, idx, streamMetatableName); err != nil {
+	if _, err := CheckUserdata(l, idx, streamMetatableName); err != nil {
 		return nil, err
 	}
-	l.UserValue(idx, 1)
-	s, _ := l.ToGoValue(-1).(*stream)
-	l.Pop(1)
+	s := testStream(l, idx)
 	if s == nil {
 		return nil, NewArgError(l, idx, "could not extract stream")
 	}
 	return s, nil
+}
+
+func testStream(l *State, idx int) *stream {
+	handle := cgo.Handle(unmarshalUintptr(TestUserdata(l, idx, streamMetatableName)))
+	if handle == 0 {
+		return nil
+	}
+	s, _ := handle.Value().(*stream)
+	return s
 }
 
 type byteReader interface {
@@ -506,9 +512,7 @@ func pushLinesFunction(l *State, toClose bool) error {
 	}
 	l.PushValue(1)
 	l.PushClosure(nArgs+1, func(l *State) (int, error) {
-		l.UserValue(UpvalueIndex(1), 1)
-		s, _ := l.ToGoValue(-1).(*stream)
-		l.Pop(1)
+		s := testStream(l, UpvalueIndex(1))
 		if s == nil {
 			return 0, fmt.Errorf("%sinvalid stream upvalue", Where(l, 1))
 		}

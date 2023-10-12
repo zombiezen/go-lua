@@ -355,13 +355,6 @@ func (l *State) CopyUserdata(dst []byte, idx, start int) int {
 	return l.state.CopyUserdata(dst, idx, start)
 }
 
-// ToGoValue converts the Lua value at the given index to a Go value.
-// The Lua value must be a userdata previously created by [State.PushGoValue];
-// otherwise the function returns nil.
-func (l *State) ToGoValue(idx int) any {
-	return l.state.ToGoValue(idx)
-}
-
 // ToPointer converts the value at the given index to a generic pointer
 // and returns its numeric address.
 // The value can be a userdata, a table, a thread, a string, or a function;
@@ -412,21 +405,6 @@ func (l *State) PushBoolean(b bool) {
 // A light userdata is equal to "any" light userdata with the same address.
 func (l *State) PushLightUserdata(p uintptr) {
 	l.state.PushLightUserdata(p)
-}
-
-// PushGoValue pushes a Go userdata onto the stack.
-// If v is nil, a nil will be pushed instead.
-// The value can be retrieved later with [State.ToGoValue].
-//
-// PushGoValue creates a userdata with a metatable
-// that has a __gc method to clean up the reference to the Go value
-// when it is garbage-collected by Lua.
-// If the metatable is tampered with, then the Go value can be leaked.
-// The metatable has the __metatable field set to false,
-// so it cannot be accessed through Lua's getmetatable function in the basic library,
-// but it is still accessible through the Go/C API and debug interfaces.
-func (l *State) PushGoValue(v any) {
-	l.state.PushGoValue(v)
 }
 
 // A Function is a callback for Lua function implemented in Go.

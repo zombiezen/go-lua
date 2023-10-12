@@ -137,60 +137,6 @@ func TestDump(t *testing.T) {
 	}
 }
 
-func TestPushGoValue(t *testing.T) {
-	tests := []struct {
-		name string
-		v    any
-		tp   Type
-	}{
-		{
-			name: "Nil",
-			v:    nil,
-			tp:   TypeNil,
-		},
-		{
-			name: "Number",
-			v:    42,
-			tp:   TypeUserdata,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			state := new(State)
-			defer func() {
-				if err := state.Close(); err != nil {
-					t.Error("Close:", err)
-				}
-			}()
-
-			state.PushGoValue(test.v)
-			if got, want := state.Top(), 1; got != want {
-				t.Fatalf("state.Top() = %d; want %d", got, want)
-			}
-			if got := state.Type(-1); got != test.tp {
-				t.Errorf("state.Type(-1) = %v; want %v", got, test.tp)
-			}
-			if got := state.ToGoValue(-1); got != test.v {
-				t.Errorf("state.ToGoValue(-1) = %#v; want %#v", got, test.v)
-			}
-		})
-	}
-}
-
-func TestInvalidToGoValue(t *testing.T) {
-	state := new(State)
-	defer func() {
-		if err := state.Close(); err != nil {
-			t.Error("Close:", err)
-		}
-	}()
-
-	state.NewUserdataUV(0, 0)
-	if got := state.ToGoValue(1); got != nil {
-		t.Errorf("state.ToGoValue(1) = %#v; want <nil>", got)
-	}
-}
-
 func TestFullUserdata(t *testing.T) {
 	state := new(State)
 	defer func() {

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"unsafe"
 
 	"zombiezen.com/go/lua/internal/lua54"
 )
@@ -179,28 +180,38 @@ func SetMetatable(l *State, tname string) {
 	l.SetMetatable(-2)
 }
 
-// TestUserdata reports if the object at the given index
-// is a userdata of the type tname (see [NewMetatable]).
-func TestUserdata(l *State, idx int, tname string) bool {
+// TestUserdata returns a copy of the block of bytes
+// for the userdata at the given index.
+// TestUserdata returns non-nil if and only if the value at the given index
+// is a userdata and has the type tname (see [NewMetatable]).
+func TestUserdata(l *State, idx int, tname string) []byte {
 	if !l.IsUserdata(idx) {
-		return false
+		return nil
 	}
 	if !l.Metatable(idx) {
-		return false
+		return nil
 	}
 	Metatable(l, tname)
 	ok := l.RawEqual(-1, -2)
 	l.Pop(2)
-	return ok
+	if !ok {
+		return nil
+	}
+	buf := make([]byte, l.RawLen(idx))
+	l.CopyUserdata(buf, idx, 0)
+	return buf
 }
 
+// CheckUserdata returns a copy of the block of bytes
+// for the given userdata argument.
 // CheckUserdata returns an error if the function argument arg
 // is not a userdata of the type tname (see [NewMetatable]).
-func CheckUserdata(l *State, arg int, tname string) error {
-	if !TestUserdata(l, arg, tname) {
-		return NewTypeError(l, arg, tname)
+func CheckUserdata(l *State, arg int, tname string) ([]byte, error) {
+	data := TestUserdata(l, arg, tname)
+	if data == nil {
+		return nil, NewTypeError(l, arg, tname)
 	}
-	return nil
+	return data, nil
 }
 
 // Where returns a string identifying the current position of the control
@@ -372,4 +383,23 @@ func NewTypeError(l *State, arg int, tname string) error {
 		typeArg = tp.String()
 	}
 	return NewArgError(l, arg, fmt.Sprintf("%s expected, got %s", tname, typeArg))
+}
+
+func unmarshalUintptr(buf []byte) uintptr {
+	if len(buf) != int(unsafe.Sizeof(uintptr(0))) {
+		return 0
+	}
+	var x uintptr
+	for i, b := range buf {
+		x |= uintptr(b) << (i * 8)
+	}
+	return x
+}
+
+func setUintptr(l *State, idx int, x uintptr) {
+	var buf [unsafe.Sizeof(uintptr(0))]byte
+	for i := range buf {
+		buf[i] = byte(x >> (i * 8))
+	}
+	l.SetUserdata(idx, 0, buf[:])
 }

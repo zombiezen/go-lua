@@ -222,12 +222,7 @@ func (lib *IOLibrary) type_(l *State) (int, error) {
 	if l.IsNone(argIdx) {
 		return 0, NewArgError(l, argIdx, "value expected")
 	}
-	if !TestUserdata(l, argIdx, streamMetatableName) {
-		pushFail(l)
-		return 1, nil
-	}
-	l.UserValue(argIdx, 1)
-	s, _ := l.ToGoValue(-1).(*stream)
+	s := testStream(l, argIdx)
 	if s == nil {
 		pushFail(l)
 		return 1, nil
