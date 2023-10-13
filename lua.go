@@ -752,6 +752,68 @@ func (l *State) Dump(w io.Writer, strip bool) (int64, error) {
 	return l.state.Dump(w, strip)
 }
 
+// GC performs a full garbage-collection cycle.
+//
+// This function should not be called by a Lua finalizer.
+func (l *State) GC() {
+	l.state.GC()
+}
+
+// GCStop stops the garbage collector.
+//
+// This function should not be called by a Lua finalizer.
+func (l *State) GCStop() {
+	l.state.GCStop()
+}
+
+// GCRestart restarts the garbage collector.
+//
+// This function should not be called by a Lua finalizer.
+func (l *State) GCRestart() {
+	l.state.GCRestart()
+}
+
+// GCCount returns the current amount of memory (in bytes) in use by Lua.
+//
+// This function should not be called by a Lua finalizer.
+func (l *State) GCCount() int64 {
+	return l.state.GCCount()
+}
+
+// GCStep performs an incremental step of garbage collection,
+// corresponding to the allocation of stepSize kibibytes.
+//
+// This function should not be called by a Lua finalizer.
+func (l *State) GCStep(stepSize int) {
+	l.state.GCStep(stepSize)
+}
+
+// IsGCRunning reports whether the garbage collector is running
+// (i.e. not stopped).
+//
+// This function should not be called by a Lua finalizer.
+func (l *State) IsGCRunning() bool {
+	return l.state.IsGCRunning()
+}
+
+// GCIncremental changes the collector to [incremental mode] with the given parameters.
+//
+// This function should not be called by a Lua finalizer.
+//
+// [incremental mode]: https://www.lua.org/manual/5.4/manual.html#2.5.1
+func (l *State) GCIncremental(pause, stepMul, stepSize int) {
+	l.state.GCIncremental(pause, stepMul, stepSize)
+}
+
+// GCGenerational changes the collector to [generational mode] with the given parameters.
+//
+// This function should not be called by a Lua finalizer.
+//
+// [generational mode]: https://www.lua.org/manual/5.4/manual.html#2.5.2
+func (l *State) GCGenerational(minorMul, majorMul int) {
+	l.state.GCGenerational(minorMul, majorMul)
+}
+
 // Next pops a key from the stack,
 // and pushes a key–value pair from the table at the given index,
 // the "next" pair after the given key.

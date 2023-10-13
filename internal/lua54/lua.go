@@ -143,6 +143,22 @@ import (
 //   }
 //   return (size_t)lua_rawlen(L, index);
 // }
+//
+// static int gcniladic(lua_State *L, int what) {
+//   return lua_gc(L, what);
+// }
+//
+// static int gcstep(lua_State *L, int stepsize) {
+//   return lua_gc(L, LUA_GCSTEP, stepsize);
+// }
+//
+// static int gcinc(lua_State *L, int pause, int stepmul, int stepsize) {
+//   return lua_gc(L, LUA_GCINC, pause, stepmul, stepsize);
+// }
+//
+// static int gcgen(lua_State *L, int minormul, int majormul) {
+//   return lua_gc(L, LUA_GCGEN, minormul, majormul);
+// }
 import "C"
 
 const (
@@ -1061,6 +1077,48 @@ func (l *State) Dump(w io.Writer, strip bool) (int64, error) {
 		err = fmt.Errorf("lua: dump function: not a function")
 	}
 	return state.n, err
+}
+
+func (l *State) GC() {
+	l.init()
+	C.gcniladic(l.ptr, C.LUA_GCCOLLECT)
+}
+
+func (l *State) GCStop() {
+	l.init()
+	C.gcniladic(l.ptr, C.LUA_GCSTOP)
+}
+
+func (l *State) GCRestart() {
+	l.init()
+	C.gcniladic(l.ptr, C.LUA_GCRESTART)
+}
+
+func (l *State) GCCount() int64 {
+	l.init()
+	kb := int64(C.gcniladic(l.ptr, C.LUA_GCCOUNT))
+	b := int64(C.gcniladic(l.ptr, C.LUA_GCCOUNTB))
+	return kb<<10 | b
+}
+
+func (l *State) GCStep(stepSize int) {
+	l.init()
+	C.gcstep(l.ptr, C.int(stepSize))
+}
+
+func (l *State) IsGCRunning() bool {
+	l.init()
+	return C.gcniladic(l.ptr, C.LUA_GCISRUNNING) != 0
+}
+
+func (l *State) GCIncremental(pause, stepMul, stepSize int) {
+	l.init()
+	C.gcinc(l.ptr, C.int(pause), C.int(stepMul), C.int(stepSize))
+}
+
+func (l *State) GCGenerational(minorMul, majorMul int) {
+	l.init()
+	C.gcgen(l.ptr, C.int(minorMul), C.int(majorMul))
 }
 
 func (l *State) Next(idx int) bool {
