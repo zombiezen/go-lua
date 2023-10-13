@@ -45,12 +45,34 @@ import (
 // int zombiezen_lua_gocb(lua_State *L);
 // int zombiezen_lua_gcfunc(lua_State *L);
 //
-// int zombiezen_lua_callback(lua_State *L) {
+// static int trampoline(lua_State *L) {
 //   int nresults = zombiezen_lua_gocb(L);
 //   if (nresults < 0) {
 //     lua_error(L);
 //   }
 //   return nresults;
+// }
+//
+// static void pushclosure(lua_State *L, uint64_t funcID, int n) {
+//   uint8_t *data = lua_newuserdatauv(L, 8, 0);
+//   data[0] = (uint8_t)funcID;
+//   data[1] = (uint8_t)(funcID >> 8);
+//   data[2] = (uint8_t)(funcID >> 16);
+//   data[3] = (uint8_t)(funcID >> 24);
+//   data[4] = (uint8_t)(funcID >> 32);
+//   data[5] = (uint8_t)(funcID >> 40);
+//   data[6] = (uint8_t)(funcID >> 48);
+//   data[7] = (uint8_t)(funcID >> 56);
+//
+//   if (luaL_newmetatable(L, "zombiezen.com/go/lua.Function")) {
+//     lua_pushcfunction(L, zombiezen_lua_gcfunc);
+//     lua_setfield(L, -2, "__gc");
+//     lua_pushboolean(L, 0);
+//     lua_setfield(L, -2, "__metatable");
+//   }
+//   lua_setmetatable(L, -2);
+//   lua_insert(L, -1 - n);
+//   lua_pushcclosure(L, trampoline, 1 + n);
 // }
 //
 // void zombiezen_lua_pushstring(lua_State *L, _GoString_ s) {
@@ -118,7 +140,7 @@ import (
 //   return lua_pcall(L, 3, 0, msgh);
 // }
 //
-// static void pushlightuserdata(lua_State *L, uint64_t p) {
+// static void pushlightuserdata(lua_State *L, uintptr_t p) {
 //   lua_pushlightuserdata(L, (void *)p);
 // }
 //
@@ -142,6 +164,20 @@ import (
 //     return 0;
 //   }
 //   return (size_t)lua_rawlen(L, index);
+// }
+//
+// static lua_State *newstate(uintptr_t id) {
+//   lua_State *L = luaL_newstate();
+//   if (L == NULL) {
+//     return NULL;
+//   }
+//   lua_setwarnf(L, NULL, NULL);
+//   *(uintptr_t *)(lua_getextraspace(L)) = id;
+//   return L;
+// }
+//
+// static uintptr_t stateid(lua_State *L) {
+//   return *(uintptr_t *)(lua_getextraspace(L));
 // }
 //
 // static int gcniladic(lua_State *L, int what) {
@@ -228,9 +264,15 @@ func (tp Type) String() string {
 }
 
 type State struct {
-	ptr *C.lua_State
-	top int
-	cap int
+	ptr  *C.lua_State
+	top  int
+	cap  int
+	main bool
+}
+
+type stateData struct {
+	nextID   uint64
+	closures map[uint64]Function
 }
 
 // stateForCallback returns a new State for the given *lua_State.
@@ -247,21 +289,36 @@ func stateForCallback(ptr *C.lua_State) *State {
 
 func (l *State) init() {
 	if l.ptr == nil {
-		l.ptr = C.luaL_newstate()
+		data := cgo.NewHandle(&stateData{
+			nextID:   1,
+			closures: make(map[uint64]Function),
+		})
+		l.ptr = C.newstate(C.uintptr_t(data))
 		if l == nil {
 			panic("could not allocate memory for new state")
 		}
-		C.lua_setwarnf(l.ptr, nil, nil)
+		l.top = 0
 		l.cap = C.LUA_MINSTACK
+		l.main = true
 	}
 }
 
 func (l *State) Close() error {
 	if l.ptr != nil {
+		if !l.main {
+			return errors.New("lua: cannot close non-main thread")
+		}
+		data := cgo.Handle(C.stateid(l.ptr))
 		C.lua_close(l.ptr)
+		data.Delete()
 		*l = State{}
 	}
 	return nil
+}
+
+// data returns the interpreter-wide data.
+func (l *State) data() *stateData {
+	return cgo.Handle(C.stateid(l.ptr)).Value().(*stateData)
 }
 
 func (l *State) AbsIndex(idx int) int {
@@ -638,7 +695,7 @@ func (l *State) PushLightUserdata(p uintptr) {
 	if l.top >= l.cap {
 		panic("stack overflow")
 	}
-	C.pushlightuserdata(l.ptr, C.uint64_t(p))
+	C.pushlightuserdata(l.ptr, C.uintptr_t(p))
 	l.top++
 }
 
@@ -661,8 +718,6 @@ func pcall(f Function, l *State) (nResults int, err error) {
 	return f(l)
 }
 
-const functionMetatableName = "zombiezen.com/go/lua.Function"
-
 func (l *State) PushClosure(n int, f Function) {
 	if f == nil {
 		panic("nil Function")
@@ -675,29 +730,17 @@ func (l *State) PushClosure(n int, f Function) {
 	if !l.CheckStack(3) {
 		panic("stack overflow")
 	}
-
-	// Create closure userdata (used as first upvalue).
-	l.NewUserdataUV(int(unsafe.Sizeof(uintptr(0))), 0)
-	if NewMetatable(l, functionMetatableName) {
-		l.populateFunctionMetatable()
+	data := l.data()
+	funcID := data.nextID
+	if funcID == 0 {
+		panic("ID wrap-around")
 	}
-	l.SetMetatable(-2)
-	setUintptr(l, -1, uintptr(cgo.NewHandle(f)))
-	l.Insert(-1 - n)
+	data.nextID++
+	data.closures[funcID] = f
 
-	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_callback), 1+C.int(n))
-	// lua_pushcclosure pops n+1, but pushes 1.
-	l.top -= n
-}
-
-func (l *State) populateFunctionMetatable() {
-	C.lua_pushcclosure(l.ptr, C.lua_CFunction(C.zombiezen_lua_gcfunc), 0)
-	l.top++
-	l.RawSetField(-2, "__gc") // metatable.__gc = zombiezen_lua_gcfunc
-	// Prevent access of metatable from Lua.
-	// The basic library's getmetatable function obeys this metafield.
-	l.PushBoolean(false)
-	l.RawSetField(-2, "__metatable") // metatable.__metatable = false
+	C.pushclosure(l.ptr, C.uint64_t(funcID), C.int(n))
+	// lua_pushcclosure pops n, but pushes 1.
+	l.top -= n - 1
 }
 
 func (l *State) Global(name string, msgHandler int) (Type, error) {
@@ -1374,18 +1417,18 @@ func (r *reader) free() {
 	}
 }
 
-func copyUintptr(l *State, idx int) uintptr {
-	var buf [unsafe.Sizeof(uintptr(0))]byte
+func copyUint64(l *State, idx int) uint64 {
+	var buf [8]byte
 	l.copyUserdata(buf[:], idx, 0)
-	var x uintptr
+	var x uint64
 	for i, b := range buf {
-		x |= uintptr(b) << (i * 8)
+		x |= uint64(b) << (i * 8)
 	}
 	return x
 }
 
-func setUintptr(l *State, idx int, x uintptr) {
-	var buf [unsafe.Sizeof(uintptr(0))]byte
+func setUint64(l *State, idx int, x uint64) {
+	var buf [8]byte
 	for i := range buf {
 		buf[i] = byte(x >> (i * 8))
 	}

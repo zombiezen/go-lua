@@ -81,13 +81,9 @@ func zombiezen_lua_gocb(l *C.lua_State) C.int {
 		// This prevents incorrect usage, especially with ActivationRecords.
 		*state = State{}
 	}()
-	handle := cgo.Handle(copyUintptr(state, goClosureUpvalueIndex))
-	if handle == 0 {
-		C.zombiezen_lua_pushstring(l, "Go closure upvalue corrupted")
-		return -1
-	}
-	f, ok := handle.Value().(Function)
-	if !ok {
+	funcID := copyUint64(state, goClosureUpvalueIndex)
+	f := state.data().closures[funcID]
+	if f == nil {
 		C.zombiezen_lua_pushstring(l, "Go closure upvalue corrupted")
 		return -1
 	}
@@ -107,10 +103,10 @@ func zombiezen_lua_gocb(l *C.lua_State) C.int {
 //export zombiezen_lua_gcfunc
 func zombiezen_lua_gcfunc(l *C.lua_State) C.int {
 	state := stateForCallback(l)
-	handle := cgo.Handle(copyUintptr(state, goClosureUpvalueIndex))
-	if handle != 0 {
-		handle.Delete()
-		setUintptr(state, goClosureUpvalueIndex, 0)
+	funcID := copyUint64(state, 1)
+	if funcID != 0 {
+		delete(state.data().closures, funcID)
+		setUint64(state, 1, 0)
 	}
 	return 0
 }

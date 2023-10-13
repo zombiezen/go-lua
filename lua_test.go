@@ -312,3 +312,37 @@ func BenchmarkExec(b *testing.B) {
 		state.Pop(1)
 	}
 }
+
+func BenchmarkPushClosure(b *testing.B) {
+	b.ReportAllocs()
+
+	state := new(State)
+	defer func() {
+		if err := state.Close(); err != nil {
+			b.Error("Close:", err)
+		}
+	}()
+
+	f := Function(func(l *State) (int, error) { return 0, nil })
+	for i := 0; i < b.N; i++ {
+		state.PushClosure(0, f)
+		state.Pop(1)
+	}
+}
+
+func BenchmarkOpenLibraries(b *testing.B) {
+	b.ReportAllocs()
+
+	state := new(State)
+	defer func() {
+		if err := state.Close(); err != nil {
+			b.Error("Close:", err)
+		}
+	}()
+
+	for i := 0; i < b.N; i++ {
+		if err := OpenLibraries(state); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
